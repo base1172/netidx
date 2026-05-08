@@ -13,15 +13,15 @@ keywords = ["networking", "distributed", "kerberos", "tool"]
 categories = ["network-programming"]
 
 [dependencies]
-netidx-core = { path = "../netidx-core" }
-netidx-netproto = { path = "../netidx-netproto" }
-netidx-value = { path = "../netidx-value" }
-netidx = { path = "../netidx" }
-netidx-archive = { path = "../netidx-archive" }
-netidx-protocols = { path = "../netidx-protocols" }
-netidx-container = { path = "../netidx-container" }
-netidx-derive = { path = "../netidx-derive" }
-netidx-wsproxy = { path = "../netidx-wsproxy" }
+netidx-core = { version = "0.31.10", path = "../netidx-core" }
+netidx-netproto = { version = "0.31.10", path = "../netidx-netproto" }
+netidx-value = { version = "0.31.10", path = "../netidx-value" }
+netidx = { version = "0.31.10", path = "../netidx" }
+netidx-archive = { version = "0.31.10", path = "../netidx-archive" }
+netidx-protocols = { version = "0.31.10", path = "../netidx-protocols" }
+netidx-container = { version = "0.31.10", path = "../netidx-container" }
+netidx-derive = { version = "0.31.5", path = "../netidx-derive" }
+netidx-wsproxy = { version = "0.31.10", path = "../netidx-wsproxy" }
 env_logger = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
