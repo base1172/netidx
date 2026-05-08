@@ -6,16 +6,17 @@ use crate::{
         to_name,
     },
 };
+use ahash::AHashMap;
 use anyhow::Result;
 use arcstr::ArcStr;
 use chrono::prelude::*;
-use fxhash::{FxHashMap, FxHashSet};
 use log::{debug, error, info, warn};
 use netidx::subscriber::Event;
+use nohash::{IntMap, IntSet};
 use parking_lot::Mutex;
 use poolshark::global::GPooled;
 use std::{
-    collections::{hash_map::Entry, HashMap, VecDeque},
+    collections::{hash_map::Entry, VecDeque},
     ops::Bound,
     path::PathBuf,
     sync::{Arc, LazyLock},
@@ -29,8 +30,8 @@ struct Cached {
     reader: ArchiveReader,
 }
 
-static ARCHIVE_READERS: LazyLock<Mutex<FxHashMap<PathBuf, Cached>>> =
-    LazyLock::new(|| Mutex::new(HashMap::default()));
+static ARCHIVE_READERS: LazyLock<Mutex<AHashMap<PathBuf, Cached>>> =
+    LazyLock::new(|| Mutex::new(AHashMap::default()));
 static CACHE_FOR: chrono::Duration = chrono::Duration::minutes(10);
 
 pub fn reopen(timestamp: DateTime<Utc>) -> Result<()> {
@@ -288,7 +289,7 @@ impl ArchiveCollectionReader {
     /// batches read
     pub fn read_deltas(
         &mut self,
-        filter: Option<&FxHashSet<Id>>,
+        filter: Option<&IntSet<Id>>,
         read_count: usize,
     ) -> Result<(usize, GPooled<VecDeque<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>>)>
     {
@@ -303,7 +304,7 @@ impl ArchiveCollectionReader {
     /// to the next file if necessary.
     pub fn read_next(
         &mut self,
-        filter: Option<&FxHashSet<Id>>,
+        filter: Option<&IntSet<Id>>,
     ) -> Result<Option<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>> {
         self.apply_read(
             |archive, cursor| archive.read_next(filter, cursor),
@@ -347,8 +348,8 @@ impl ArchiveCollectionReader {
     /// reimage the file at the current cursor position, returning the path map and the image
     pub fn reimage(
         &mut self,
-        filter: Option<&FxHashSet<Id>>,
-    ) -> Result<GPooled<FxHashMap<Id, Event>>> {
+        filter: Option<&IntSet<Id>>,
+    ) -> Result<GPooled<IntMap<Id, Event>>> {
         if self.source()? {
             task::block_in_place(|| {
                 let ds = self.source.as_mut().unwrap();

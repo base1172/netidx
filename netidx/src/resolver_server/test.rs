@@ -4,8 +4,8 @@ use crate::{
     path::Path,
     protocol::resolver::{HashMethod, Publisher, PublisherId, PublisherRef, TargetAuth},
 };
+use ahash::AHashMap;
 use bytes::Bytes;
-use fxhash::FxHashMap;
 use netidx_netproto::resolver::PublisherPriority;
 use rand::{self, rng, RngExt};
 use std::{
@@ -16,7 +16,7 @@ use std::{
 
 #[test]
 fn test_resolver_store() {
-    let mut publishers: FxHashMap<SocketAddr, Arc<Publisher>> = HashMap::default();
+    let mut publishers: AHashMap<SocketAddr, Arc<Publisher>> = AHashMap::default();
     let mut default = vec![];
     let mut hm = HashMap::new();
     hm.insert(Path::from("foo"), 0);

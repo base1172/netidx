@@ -16,6 +16,7 @@ use crate::{
     tls,
     utils::{BatchItem, Batched, ChanWrap},
 };
+use ahash::AHashMap;
 use anyhow::{anyhow, Error, Result};
 use bytes::{Buf, BufMut, Bytes};
 use futures::{
@@ -27,19 +28,20 @@ use futures::{
     select_biased,
     stream::FuturesUnordered,
 };
-use fxhash::FxHashMap;
 use if_addrs::{get_if_addrs, IfAddr, Interface as NetworkInterface};
 use log::{info, trace, warn};
 use netidx_netproto::resolver::{PublisherPriority, PublisherRef, UserInfo};
+use nohash::IntMap;
 use parking_lot::Mutex;
 use poolshark::global::{GPooled, Pool};
+use poolshark::local::LPooled;
 use rand::RngExt;
 use smallvec::SmallVec;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::LazyLock;
 use std::{
     cmp::{max, Eq, PartialEq},
-    collections::{hash_map::Entry, HashMap, VecDeque},
+    collections::{hash_map::Entry, VecDeque},
     error, fmt,
     hash::Hash,
     iter, mem,
@@ -496,7 +498,7 @@ fn pick(n: usize) -> usize {
 #[derive(Debug)]
 struct Connection {
     primary: Option<(ConId, BatchSender<ToCon>)>,
-    isolated: FxHashMap<ConId, BatchSender<ToCon>>,
+    isolated: IntMap<ConId, BatchSender<ToCon>>,
 }
 
 impl Connection {
@@ -534,12 +536,12 @@ struct Chosen {
 struct SubscriberInner {
     id: SubscriberId,
     resolver: ResolverRead,
-    connections: FxHashMap<SocketAddr, Connection>,
-    recently_failed: FxHashMap<SocketAddr, Instant>,
-    subscribed: HashMap<Path, SubStatus>,
-    durable_dead: HashMap<Path, DvalWeak>,
-    durable_pending: HashMap<Path, DvalWeak>,
-    durable_alive: HashMap<Path, DvalWeak>,
+    connections: AHashMap<SocketAddr, Connection>,
+    recently_failed: AHashMap<SocketAddr, Instant>,
+    subscribed: AHashMap<Path, SubStatus>,
+    durable_dead: AHashMap<Path, DvalWeak>,
+    durable_pending: AHashMap<Path, DvalWeak>,
+    durable_alive: AHashMap<Path, DvalWeak>,
     trigger_resub: UnboundedSender<()>,
     desired_auth: DesiredAuth,
     tls_ctx: Option<tls::CachedConnector>,
@@ -558,7 +560,7 @@ impl SubscriberInner {
 
     fn choose_random_addr(
         &mut self,
-        publishers: &GPooled<FxHashMap<PublisherId, Publisher>>,
+        publishers: &GPooled<IntMap<PublisherId, Publisher>>,
         resolved: &Resolved,
         flags: PublishFlags,
     ) -> Option<Chosen> {
@@ -617,7 +619,7 @@ impl SubscriberInner {
 
     fn choose_existing_addr(
         &mut self,
-        publishers: &GPooled<FxHashMap<PublisherId, Publisher>>,
+        publishers: &GPooled<IntMap<PublisherId, Publisher>>,
         resolved: &Resolved,
         mut flags: PublishFlags,
     ) -> Option<Chosen> {
@@ -645,7 +647,7 @@ impl SubscriberInner {
     fn choose_local_addr(
         &mut self,
         tried_existing: bool,
-        publishers: &GPooled<FxHashMap<PublisherId, Publisher>>,
+        publishers: &GPooled<IntMap<PublisherId, Publisher>>,
         resolved: &Resolved,
         flags: PublishFlags,
     ) -> Option<Chosen> {
@@ -729,7 +731,7 @@ impl SubscriberInner {
 
     fn choose_addr(
         &mut self,
-        publishers: &GPooled<FxHashMap<PublisherId, Publisher>>,
+        publishers: &GPooled<IntMap<PublisherId, Publisher>>,
         resolved: &Resolved,
     ) -> Option<Chosen> {
         let mut flags = PublishFlags::from_bits(resolved.flags)?;
@@ -812,12 +814,12 @@ impl Subscriber {
             id: SubscriberId::new(),
             resolver,
             desired_auth,
-            connections: HashMap::default(),
-            recently_failed: HashMap::default(),
-            subscribed: HashMap::default(),
-            durable_dead: HashMap::default(),
-            durable_pending: HashMap::default(),
-            durable_alive: HashMap::default(),
+            connections: AHashMap::default(),
+            recently_failed: AHashMap::default(),
+            subscribed: AHashMap::default(),
+            durable_dead: AHashMap::default(),
+            durable_pending: AHashMap::default(),
+            durable_alive: AHashMap::default(),
             trigger_resub: tx,
             tls_ctx,
             interfaces: get_if_addrs()?,
@@ -1227,7 +1229,7 @@ impl Subscriber {
             Error(Error),
         }
         let now = Instant::now();
-        let mut pending: HashMap<Path, St> = HashMap::new();
+        let mut pending: LPooled<AHashMap<Path, St>> = LPooled::take();
         // Init
         let r = {
             let mut t = self.0.lock();
@@ -1299,7 +1301,7 @@ impl Subscriber {
                             let tls_ctx = t.tls_ctx.clone();
                             let sub_id = t.durable_id(&p).unwrap_or_else(SubId::new);
                             let con = t.connections.entry(ch.addr).or_insert_with(|| {
-                                Connection { primary: None, isolated: HashMap::default() }
+                                Connection { primary: None, isolated: IntMap::default() }
                             });
                             let con = if ch.flags.contains(PublishFlags::ISOLATED) {
                                 let (id, c) = self.start_connection(

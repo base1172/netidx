@@ -14,6 +14,7 @@ use crate::{
     tls,
     utils::{self, ChanId, ChanWrap},
 };
+use ahash::{AHashMap, AHashSet};
 use anyhow::{anyhow, Error, Result};
 use futures::{
     channel::{
@@ -23,16 +24,16 @@ use futures::{
     prelude::*,
     stream::FusedStream,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use if_addrs::get_if_addrs;
 use log::{info, warn};
 use netidx_netproto::resolver::PublisherPriority;
+use nohash::{IntMap, IntSet};
 use parking_lot::Mutex;
 use poolshark::global::{GPooled, Pool};
 use rand::{self, RngExt};
 use std::{
     boxed::Box,
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, BTreeSet},
     convert::{From, Into, TryInto},
     default::Default,
     fmt, iter, mem,
@@ -297,10 +298,10 @@ atomic_id!(ClId);
 
 static BATCHES: LazyLock<Pool<Vec<WriteRequest>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
-static TOPUB: LazyLock<Pool<HashMap<Path, Option<u32>>>> =
+static TOPUB: LazyLock<Pool<AHashMap<Path, Option<u32>>>> =
     LazyLock::new(|| Pool::new(10, 10_000));
-static TOUPUB: LazyLock<Pool<HashSet<Path>>> = LazyLock::new(|| Pool::new(5, 10_000));
-static TOUSUB: LazyLock<Pool<HashMap<Id, Subscribed>>> =
+static TOUPUB: LazyLock<Pool<AHashSet<Path>>> = LazyLock::new(|| Pool::new(5, 10_000));
+static TOUSUB: LazyLock<Pool<IntMap<Id, Subscribed>>> =
     LazyLock::new(|| Pool::new(5, 10_000));
 static RAWBATCH: LazyLock<Pool<Vec<BatchMsg>>> = LazyLock::new(|| Pool::new(100, 10_000));
 static UPDATES: LazyLock<Pool<Vec<publisher::From>>> =
@@ -308,7 +309,7 @@ static UPDATES: LazyLock<Pool<Vec<publisher::From>>> =
 static RAWUNSUBS: LazyLock<Pool<Vec<(ClId, Id)>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
 static UNSUBS: LazyLock<Pool<Vec<Id>>> = LazyLock::new(|| Pool::new(100, 10_000));
-static BATCH: LazyLock<Pool<FxHashMap<ClId, Update>>> =
+static BATCH: LazyLock<Pool<IntMap<ClId, Update>>> =
     LazyLock::new(|| Pool::new(100, 1000));
 
 // estokes 2021: This is reasonable because there will never be
@@ -468,7 +469,7 @@ type MsgQ = Sender<(Option<Duration>, Update)>;
 // are many more published values than clients we can save a lot of
 // memory this way. Roughly the size of a hashmap, plus it's
 // keys/values, replaced by 1 word.
-type Subscribed = Arc<FxHashSet<ClId>>;
+type Subscribed = Arc<IntSet<ClId>>;
 
 /// User-defined authorization function for fine-grained access control.
 pub type ExtendedAuth =
@@ -848,7 +849,7 @@ impl UpdateBatch {
 #[derive(Debug)]
 struct Client {
     msg_queue: MsgQ,
-    subscribed: FxHashMap<Id, Permissions>,
+    subscribed: IntMap<Id, Permissions>,
     user: Option<UserInfo>,
 }
 
@@ -858,7 +859,7 @@ pub struct Published {
     current: Value,
     subscribed: Subscribed,
     path: Path,
-    aliases: Option<Box<FxHashSet<Path>>>,
+    aliases: Option<Box<AHashSet<Path>>>,
 }
 
 impl Published {
@@ -870,7 +871,7 @@ impl Published {
         &self.path
     }
 
-    pub fn subscribed(&self) -> &FxHashSet<ClId> {
+    pub fn subscribed(&self) -> &IntSet<ClId> {
         &self.subscribed
     }
 }
@@ -879,27 +880,26 @@ impl Published {
 struct PublisherInner {
     addr: SocketAddr,
     stop: Option<oneshot::Sender<oneshot::Sender<()>>>,
-    clients: FxHashMap<ClId, Client>,
-    hc_subscribed: FxHashMap<BTreeSet<ClId>, Subscribed>,
-    by_path: HashMap<Path, Id>,
-    by_id: FxHashMap<Id, Published>,
-    destroy_on_idle: FxHashSet<Id>,
-    on_write_chans:
-        FxHashMap<ChanWrap<GPooled<Vec<WriteRequest>>>, (ChanId, HashSet<Id>)>,
+    clients: IntMap<ClId, Client>,
+    hc_subscribed: AHashMap<BTreeSet<ClId>, Subscribed>,
+    by_path: AHashMap<Path, Id>,
+    by_id: IntMap<Id, Published>,
+    destroy_on_idle: IntSet<Id>,
+    on_write_chans: AHashMap<ChanWrap<GPooled<Vec<WriteRequest>>>, (ChanId, IntSet<Id>)>,
     on_event_chans: Vec<UnboundedSender<Event>>,
-    on_event_by_id_chans: FxHashMap<Id, Vec<UnboundedSender<Event>>>,
+    on_event_by_id_chans: IntMap<Id, Vec<UnboundedSender<Event>>>,
     extended_auth: Option<ExtendedAuthWrap>,
-    on_write: FxHashMap<Id, Vec<(ChanId, Sender<GPooled<Vec<WriteRequest>>>)>>,
+    on_write: IntMap<Id, Vec<(ChanId, Sender<GPooled<Vec<WriteRequest>>>)>>,
     resolver: ResolverWrite,
-    advertised: HashMap<Path, HashSet<Path>>,
-    to_publish: GPooled<HashMap<Path, Option<u32>>>,
-    to_publish_default: GPooled<HashMap<Path, Option<u32>>>,
-    to_unpublish: GPooled<HashSet<Path>>,
-    to_unpublish_default: GPooled<HashSet<Path>>,
-    to_unsubscribe: GPooled<HashMap<Id, Subscribed>>,
+    advertised: AHashMap<Path, AHashSet<Path>>,
+    to_publish: GPooled<AHashMap<Path, Option<u32>>>,
+    to_publish_default: GPooled<AHashMap<Path, Option<u32>>>,
+    to_unpublish: GPooled<AHashSet<Path>>,
+    to_unpublish_default: GPooled<AHashSet<Path>>,
+    to_unsubscribe: GPooled<IntMap<Id, Subscribed>>,
     publish_triggered: bool,
     trigger_publish: UnboundedSender<Option<oneshot::Sender<()>>>,
-    wait_clients: FxHashMap<Id, Vec<oneshot::Sender<()>>>,
+    wait_clients: AHashMap<Id, Vec<oneshot::Sender<()>>>,
     wait_any_client: Vec<oneshot::Sender<()>>,
     default: BTreeMap<Path, UnboundedSender<(Path, oneshot::Sender<()>)>>,
 }
@@ -999,7 +999,7 @@ impl PublisherInner {
             let e = self
                 .on_write_chans
                 .entry(ChanWrap(tx.clone()))
-                .or_insert_with(|| (ChanId::new(), HashSet::new()));
+                .or_insert_with(|| (ChanId::new(), IntSet::default()));
             e.1.insert(id);
             let cid = e.0;
             let mut gc = Vec::new();
@@ -1218,18 +1218,18 @@ impl Publisher {
         let pb = Publisher(Arc::new(Mutex::new(PublisherInner {
             addr,
             stop: Some(stop),
-            clients: HashMap::default(),
-            hc_subscribed: HashMap::default(),
-            by_path: HashMap::new(),
-            by_id: HashMap::default(),
-            destroy_on_idle: HashSet::default(),
-            on_write_chans: HashMap::default(),
+            clients: IntMap::default(),
+            hc_subscribed: AHashMap::default(),
+            by_path: AHashMap::new(),
+            by_id: IntMap::default(),
+            destroy_on_idle: IntSet::default(),
+            on_write_chans: AHashMap::default(),
             on_event_chans: Vec::new(),
-            on_event_by_id_chans: HashMap::default(),
+            on_event_by_id_chans: IntMap::default(),
             extended_auth: None,
-            on_write: HashMap::default(),
+            on_write: IntMap::default(),
             resolver,
-            advertised: HashMap::new(),
+            advertised: AHashMap::new(),
             to_publish: TOPUB.take(),
             to_publish_default: TOPUB.take(),
             to_unpublish: TOUPUB.take(),
@@ -1237,7 +1237,7 @@ impl Publisher {
             to_unsubscribe: TOUSUB.take(),
             publish_triggered: false,
             trigger_publish: tx_trigger,
-            wait_clients: HashMap::default(),
+            wait_clients: AHashMap::default(),
             wait_any_client: Vec::new(),
             default: BTreeMap::new(),
         })));
@@ -1357,7 +1357,7 @@ impl Publisher {
         let subscribed = pb
             .hc_subscribed
             .entry(BTreeSet::new())
-            .or_insert_with(|| Arc::new(HashSet::default()))
+            .or_insert_with(|| Arc::new(IntSet::default()))
             .clone();
         pb.by_id.insert(
             id,
@@ -1422,7 +1422,7 @@ impl Publisher {
                 a.insert(path);
             }
             None => {
-                let mut set = HashSet::default();
+                let mut set = AHashSet::default();
                 set.insert(path);
                 v.aliases = Some(Box::new(set))
             }

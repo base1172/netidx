@@ -6,7 +6,6 @@ use futures::{
     prelude::*,
     select_biased, stream,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use log::{error, info};
 use netidx::{
     path::Path,
@@ -18,7 +17,6 @@ use netidx::{
 use poolshark::global::{GPooled, Pool};
 use std::{
     borrow::Borrow,
-    collections::HashMap,
     ops::Drop,
     sync::Arc,
     time::{Duration, Instant},
@@ -28,10 +26,12 @@ use tokio::task;
 #[macro_use]
 pub mod server {
     use std::{
-        collections::HashSet,
         panic::{catch_unwind, AssertUnwindSafe},
         sync::LazyLock,
     };
+
+    use ahash::{AHashMap, AHashSet};
+    use nohash::IntMap;
 
     use super::*;
 
@@ -98,7 +98,7 @@ pub mod server {
         }}
     }
 
-    static ARGS: LazyLock<Pool<HashMap<ArcStr, Value>>> =
+    static ARGS: LazyLock<Pool<AHashMap<ArcStr, Value>>> =
         LazyLock::new(|| Pool::new(1000, 50));
 
     #[derive(Debug)]
@@ -131,7 +131,7 @@ pub mod server {
     pub struct RpcCall {
         pub client: ClId,
         pub id: ProcId,
-        pub args: GPooled<HashMap<ArcStr, Value>>,
+        pub args: GPooled<AHashMap<ArcStr, Value>>,
         pub reply: RpcReply,
     }
 
@@ -142,7 +142,7 @@ pub mod server {
     }
 
     struct PendingCall {
-        args: GPooled<HashMap<ArcStr, Value>>,
+        args: GPooled<AHashMap<ArcStr, Value>>,
         initiated: Instant,
     }
 
@@ -150,9 +150,9 @@ pub mod server {
         id: ProcId,
         call: Arc<Val>,
         _doc: Val,
-        args: FxHashMap<Id, Arg>,
-        arg_names: FxHashSet<ArcStr>,
-        pending: FxHashMap<ClId, PendingCall>,
+        args: IntMap<Id, Arg>,
+        arg_names: AHashSet<ArcStr>,
+        pending: IntMap<ClId, PendingCall>,
         handler: Option<mpsc::Sender<T>>,
         map: M,
         events: stream::Fuse<mpsc::Receiver<GPooled<Vec<WriteRequest>>>>,
@@ -168,7 +168,7 @@ pub mod server {
         async fn run(mut self) {
             static GC_FREQ: Duration = Duration::from_secs(1);
             static GC_THRESHOLD: usize = 128;
-            fn gc_pending(pending: &mut FxHashMap<ClId, PendingCall>, now: Instant) {
+            fn gc_pending(pending: &mut IntMap<ClId, PendingCall>, now: Instant) {
                 static STALE: Duration = Duration::from_secs(60);
                 pending.retain(|_, pc| now - pc.initiated < STALE);
                 pending.shrink_to_fit();
@@ -348,7 +348,7 @@ pub mod server {
                 name.append("doc"),
                 doc,
             )?;
-            let mut arg_names = HashSet::default();
+            let mut arg_names = AHashSet::default();
             let args = args
                 .into_iter()
                 .map(|ArgSpec { name: arg, doc, default_value }| {
@@ -371,7 +371,7 @@ pub mod server {
                     )?;
                     Ok((_value.id(), Arg { name: arg, _value, _doc }))
                 })
-                .collect::<Result<FxHashMap<Id, Arg>>>()?;
+                .collect::<Result<IntMap<Id, Arg>>>()?;
             let call = Arc::new(publisher.publish_with_flags(
                 flags | PublishFlags::USE_EXISTING,
                 name.clone(),
@@ -384,7 +384,7 @@ pub mod server {
                 _doc,
                 args,
                 arg_names,
-                pending: HashMap::default(),
+                pending: IntMap::default(),
                 map,
                 handler,
                 events: rx_ev.fuse(),
@@ -408,11 +408,10 @@ pub mod server {
 #[macro_use]
 pub mod client {
     use super::*;
-    use fxhash::FxHashSet;
+    use ahash::{AHashMap, AHashSet};
     use log::{debug, trace};
     use netidx::subscriber::Event;
     use once_cell::sync::OnceCell;
-    use std::collections::HashSet;
     use tokio::time;
 
     /// Convenience macro for calling rpcs.
@@ -431,7 +430,7 @@ pub mod client {
     #[derive(Debug)]
     struct ProcInner {
         call: Dval,
-        args: OnceCell<FxHashSet<ArcStr>>,
+        args: OnceCell<AHashSet<ArcStr>>,
         subscribe_timeout: Duration,
     }
 
@@ -512,19 +511,19 @@ pub mod client {
                             debug!("args are {:?}", v);
                             let args = v
                                 .clone()
-                                .cast_to::<FxHashSet<ArcStr>>()
+                                .cast_to::<AHashSet<ArcStr>>()
                                 .ok()
-                                .unwrap_or(HashSet::default());
+                                .unwrap_or_else(AHashSet::default);
                             // Another thread may have set these args already,
                             // so ignore if `set` returns Err.
-                            let _: Result<(), FxHashSet<ArcStr>> = self.0.args.set(args);
+                            let _: Result<(), AHashSet<ArcStr>> = self.0.args.set(args);
                             break;
                         }
                     }
                 }
             }
             let args = {
-                let mut set: FxHashMap<ArcStr, Value> = HashMap::default();
+                let mut set: AHashMap<ArcStr, Value> = AHashMap::default();
                 let names = match self.0.args.get() {
                     Some(names) => names,
                     None => bail!("no args set"),

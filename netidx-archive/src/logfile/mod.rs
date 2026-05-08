@@ -10,11 +10,11 @@ pub use self::{
     reader::{AlreadyCompressed, ArchiveReader},
     writer::ArchiveWriter,
 };
+use ahash::AHashMap;
 use anyhow::{Context, Error, Result};
 use arcstr::ArcStr;
 use bytes::{Buf, BufMut};
 use chrono::prelude::*;
-use fxhash::{FxBuildHasher, FxHashMap};
 use indexmap::IndexMap;
 use log::warn;
 use memmap2::Mmap;
@@ -24,6 +24,7 @@ use netidx::{
     subscriber::{Event, FromValue, Value},
 };
 use netidx_derive::Pack;
+use nohash::IntMap;
 use packed_struct::PackedStruct;
 use poolshark::global::{GPooled, Pool};
 use std::{
@@ -150,6 +151,8 @@ pub struct RecordIndex {
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct Id(u32);
+
+impl nohash::IsEnabled for Id {}
 
 impl Pack for Id {
     fn encoded_len(&self) -> usize {
@@ -315,7 +318,7 @@ pub static BATCH_POOL: LazyLock<Pool<Vec<BatchItem>>> =
 pub(crate) static CURSOR_BATCH_POOL: LazyLock<
     Pool<VecDeque<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>>,
 > = LazyLock::new(|| Pool::new(100, 10_000));
-pub(crate) static IMG_POOL: LazyLock<Pool<FxHashMap<Id, Event>>> =
+pub(crate) static IMG_POOL: LazyLock<Pool<IntMap<Id, Event>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
 static EPSILON: chrono::Duration = chrono::Duration::microseconds(1);
 
@@ -571,8 +574,8 @@ impl fmt::Display for RecordTooLarge {
 impl error::Error for RecordTooLarge {}
 
 fn scan_records(
-    path_by_id: &mut IndexMap<Id, Path, FxBuildHasher>,
-    id_by_path: &mut FxHashMap<Path, Id>,
+    path_by_id: &mut IndexMap<Id, Path, nohash::BuildNoHashHasher<Id>>,
+    id_by_path: &mut AHashMap<Path, Id>,
     mut imagemap: Option<&mut ArrayMap<DateTime<Utc>, usize>>,
     mut deltamap: Option<&mut ArrayMap<DateTime<Utc>, usize>>,
     time_basis: &mut DateTime<Utc>,
@@ -672,8 +675,8 @@ pub fn read_file_header(path: impl AsRef<FilePath>) -> Result<FileHeader> {
 fn scan_file(
     indexed: &mut bool,
     compressed: &mut Option<CompressionHeader>,
-    path_by_id: &mut IndexMap<Id, Path, FxBuildHasher>,
-    id_by_path: &mut FxHashMap<Path, Id>,
+    path_by_id: &mut IndexMap<Id, Path, nohash::BuildNoHashHasher<Id>>,
+    id_by_path: &mut AHashMap<Path, Id>,
     imagemap: Option<&mut ArrayMap<DateTime<Utc>, usize>>,
     deltamap: Option<&mut ArrayMap<DateTime<Utc>, usize>>,
     time_basis: &mut DateTime<Utc>,

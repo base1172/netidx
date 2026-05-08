@@ -126,6 +126,8 @@ macro_rules! atomic_id {
         )]
         pub struct $name(u64);
 
+        impl nohash::IsEnabled for $name {}
+
         impl $name {
             pub fn new() -> Self {
                 use std::sync::atomic::{AtomicU64, Ordering};
@@ -253,6 +255,8 @@ impl<T> Hash for ChanWrap<T> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ChanId(u64);
+
+impl nohash::IsEnabled for ChanId {}
 
 impl ChanId {
     pub fn new() -> Self {

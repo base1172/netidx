@@ -120,17 +120,17 @@ pub(crate) mod local_auth {
         os::local_auth::Credential,
         resolver_server::config::{Config, MemberServer},
     };
+    use ahash::AHashMap;
     use anyhow::Result;
     use bytes::{Bytes, BytesMut};
     use futures::{channel::oneshot, prelude::*, select_biased};
-    use fxhash::{FxBuildHasher, FxHashMap};
     use log::{debug, warn};
     use netidx_core::utils::{make_sha3_token, pack};
     use netidx_netproto::resolver::HashMethod;
     use parking_lot::Mutex;
     use rand::{rng, RngExt};
     use std::{
-        collections::{hash_map::Entry, HashMap},
+        collections::hash_map::Entry,
         fs::Permissions,
         os::unix::fs::PermissionsExt,
         sync::{
@@ -149,7 +149,7 @@ pub(crate) mod local_auth {
 
     pub(crate) struct AuthServer {
         secret: u128,
-        issued: Arc<Mutex<FxHashMap<u128, Instant>>>,
+        issued: Arc<Mutex<AHashMap<u128, Instant>>>,
         _stop: oneshot::Sender<()>,
     }
 
@@ -158,7 +158,7 @@ pub(crate) mod local_auth {
             mapper: Mapper,
             mut client: UnixStream,
             secret: u128,
-            issued: Arc<Mutex<FxHashMap<u128, Instant>>>,
+            issued: Arc<Mutex<AHashMap<u128, Instant>>>,
         ) -> Result<()> {
             let cred = client.peer_cred()?;
             debug!("got peer credentials {:?}", cred);
@@ -188,7 +188,7 @@ pub(crate) mod local_auth {
             mapper: Mapper,
             listener: UnixListener,
             secret: u128,
-            issued: Arc<Mutex<FxHashMap<u128, Instant>>>,
+            issued: Arc<Mutex<AHashMap<u128, Instant>>>,
             stop: oneshot::Receiver<()>,
         ) {
             let open = Arc::new(AtomicUsize::new(0));
@@ -243,8 +243,7 @@ pub(crate) mod local_auth {
             let listener = UnixListener::bind(socket_path)?;
             fs::set_permissions(socket_path, Permissions::from_mode(0o777)).await?;
             let mapper = Mapper::new(cfg, member).await?;
-            let issued =
-                Arc::new(Mutex::new(HashMap::with_hasher(FxBuildHasher::default())));
+            let issued = Arc::new(Mutex::new(AHashMap::default()));
             let secret = rng().random::<u128>();
             let (tx, rx) = oneshot::channel();
             spawn(Self::run(mapper, listener, secret, issued.clone(), rx));

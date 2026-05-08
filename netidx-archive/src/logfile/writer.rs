@@ -4,21 +4,21 @@ use super::{
     RecordTooLarge, RecordTyp, Timestamp, COMMITTED_OFFSET, FILE_VERSION, MAX_RECORD_LEN,
     PM_POOL,
 };
+use ahash::AHashMap;
 use anyhow::Result;
 use bytes::BufMut;
 use chrono::prelude::*;
 use fs3::{allocation_granularity, FileExt};
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use indexmap::IndexMap;
 use log::warn;
 use memmap2::{Mmap, MmapMut};
 use netidx::{pack::Pack, path::Path};
+use nohash::IntSet;
 use parking_lot::RwLock;
 use poolshark::global::GPooled;
 use std::{
     self,
     cmp::max,
-    collections::{HashMap, HashSet},
     fs::{File, OpenOptions},
     iter::IntoIterator,
     mem,
@@ -103,8 +103,8 @@ use std::{
 /// 1289 bytes (264 bytes of overhead 20%)
 pub struct ArchiveWriter {
     time: MonotonicTimestamper,
-    path_by_id: IndexMap<Id, Path, FxBuildHasher>,
-    id_by_path: FxHashMap<Path, Id>,
+    path_by_id: IndexMap<Id, Path, nohash::BuildNoHashHasher<Id>>,
+    id_by_path: AHashMap<Path, Id>,
     file: Arc<File>,
     _external_lock: Option<Arc<File>>,
     end: Arc<AtomicUsize>,
@@ -113,7 +113,7 @@ pub struct ArchiveWriter {
     block_size: usize,
     mmap: MmapMut,
     indexed: bool,
-    index: FxHashSet<Id>,
+    index: IntSet<Id>,
     index_vec: Vec<Id>,
 }
 
@@ -164,8 +164,8 @@ impl ArchiveWriter {
             let mmap = unsafe { MmapMut::map_mut(&file)? };
             let mut t = ArchiveWriter {
                 time,
-                path_by_id: IndexMap::with_hasher(FxBuildHasher::default()),
-                id_by_path: HashMap::default(),
+                path_by_id: IndexMap::default(),
+                id_by_path: AHashMap::default(),
                 file: Arc::new(file),
                 _external_lock: external_lock,
                 end: Arc::new(AtomicUsize::new(0)),
@@ -174,7 +174,7 @@ impl ArchiveWriter {
                 block_size,
                 mmap,
                 indexed: false,
-                index: HashSet::default(),
+                index: IntSet::default(),
                 index_vec: Vec::new(),
             };
             let mut compress = None;
@@ -227,8 +227,8 @@ impl ArchiveWriter {
             mmap.flush()?;
             Ok(ArchiveWriter {
                 time,
-                path_by_id: IndexMap::with_hasher(FxBuildHasher::default()),
-                id_by_path: HashMap::default(),
+                path_by_id: IndexMap::default(),
+                id_by_path: AHashMap::default(),
                 file: Arc::new(file),
                 _external_lock: external_lock,
                 end: Arc::new(AtomicUsize::new(committed as usize)),
@@ -237,7 +237,7 @@ impl ArchiveWriter {
                 block_size,
                 mmap,
                 indexed: true,
-                index: HashSet::default(),
+                index: IntSet::default(),
                 index_vec: Vec::new(),
             })
         }

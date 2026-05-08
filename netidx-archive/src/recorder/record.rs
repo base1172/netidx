@@ -4,6 +4,7 @@ use crate::{
     logfile_collection::ArchiveCollectionWriter,
     recorder::{BCastMsg, ShardId, Shards},
 };
+use ahash::{AHashMap, AHashSet};
 use anyhow::{Context, Result};
 use arcstr::ArcStr;
 use chrono::prelude::*;
@@ -13,7 +14,6 @@ use futures::{
     prelude::*,
     select_biased,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use log::{error, info, warn};
 use netidx::{
     path::Path,
@@ -22,13 +22,9 @@ use netidx::{
     subscriber::{Dval, Event, SubId, Subscriber, UpdatesFlags},
     utils::{self, Batched},
 };
+use nohash::IntMap;
 use poolshark::global::GPooled;
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    ops::Bound,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, ops::Bound, sync::Arc, time::Duration};
 use tokio::{
     task,
     time::{self, Instant},
@@ -145,7 +141,7 @@ async fn wait_list(pending: &mut Option<Fuse<oneshot::Receiver<Lst>>>) -> Lst {
 fn write_pathmap(
     archive: &mut ArchiveCollectionWriter,
     to_add: &mut Vec<(Path, SubId)>,
-    by_subid: &mut FxHashMap<SubId, Id>,
+    by_subid: &mut IntMap<SubId, Id>,
 ) -> Result<()> {
     task::block_in_place(|| {
         let i = to_add.iter().map(|(p, _)| p);
@@ -164,8 +160,8 @@ fn write_pathmap(
 
 fn write_image(
     archive: &mut ArchiveCollectionWriter,
-    by_subid: &FxHashMap<SubId, Id>,
-    image: &FxHashMap<SubId, Event>,
+    by_subid: &IntMap<SubId, Id>,
+    image: &IntMap<SubId, Event>,
     ts: DateTime<Utc>,
 ) -> Result<()> {
     let mut b = BATCH_POOL.take();
@@ -193,9 +189,9 @@ pub(super) async fn run(
     let (tx_batch, rx_batch) = mpsc::channel(record_config.slack);
     let mut rx_batch = Batched::new(rx_batch, 10000);
     let (tx_list, rx_list) = mpsc::unbounded();
-    let mut by_subid: FxHashMap<SubId, Id> = HashMap::default();
-    let mut image: FxHashMap<SubId, Event> = HashMap::default();
-    let mut subscribed: HashMap<Path, Dval> = HashMap::new();
+    let mut by_subid: IntMap<SubId, Id> = IntMap::default();
+    let mut image: IntMap<SubId, Event> = IntMap::default();
+    let mut subscribed: AHashMap<Path, Dval> = AHashMap::default();
     let bcast = shards.bcast[&shard_id].clone();
     let block_size = archive.block_size()?;
     let flush_frequency = record_config.flush_frequency.map(|f| block_size * f);
@@ -211,7 +207,7 @@ pub(super) async fn run(
         }
     };
     let mut to_add: Vec<(Path, SubId)> = Vec::new();
-    let mut all_paths: FxHashSet<Path> = HashSet::default();
+    let mut all_paths: AHashSet<Path> = AHashSet::default();
     let mut remove_paths: Vec<Path> = vec![];
     let mut last_image = archive.len()?;
     let mut last_flush = archive.len()?;

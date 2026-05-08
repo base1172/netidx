@@ -18,7 +18,6 @@ use futures::{
     prelude::*,
     select_biased,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use log::{debug, warn};
 use netidx::{
     path::Path,
@@ -26,24 +25,20 @@ use netidx::{
     resolver_client::GlobSet,
     subscriber::Event,
 };
+use nohash::{IntMap, IntSet};
 use poolshark::global::GPooled;
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Bound,
-    sync::Arc,
-    time::Duration,
-};
+use std::{ops::Bound, sync::Arc, time::Duration};
 use tokio::{sync::broadcast, task, time};
 
 pub(super) struct SessionShard {
     shards: Arc<Shards>,
     id: ShardId,
     publisher: Publisher,
-    published: FxHashMap<Id, Val>,
-    published_ids: FxHashSet<publisher::Id>,
+    published: IntMap<Id, Val>,
+    published_ids: IntSet<publisher::Id>,
     session_bcast: broadcast::Sender<SessionBCastMsg>,
     filter: GlobSet,
-    filterset: GPooled<FxHashSet<Id>>,
+    filterset: GPooled<IntSet<Id>>,
     speed: Speed,
     state: Arc<AtomicState>,
     data_base: Path,
@@ -97,8 +92,8 @@ impl SessionShard {
             id: shard_id,
             session_bcast,
             publisher,
-            published: HashMap::default(),
-            published_ids: HashSet::default(),
+            published: IntMap::default(),
+            published_ids: IntSet::default(),
             speed: Speed::Limited {
                 rate: 1.,
                 last_emitted: DateTime::<Utc>::MIN_UTC,

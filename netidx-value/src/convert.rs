@@ -1,10 +1,10 @@
 use crate::{Typ, ValArray, Value};
+use ahash::{AHashMap, AHashSet};
 use anyhow::{anyhow, bail, Result};
 use arcstr::ArcStr;
 use bytes::Bytes;
 use chrono::prelude::*;
 use compact_str::CompactString;
-use fxhash::FxHashMap;
 use indexmap::{IndexMap, IndexSet};
 use netidx_core::path::Path;
 use poolshark::{
@@ -703,6 +703,39 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
     }
 }
 
+impl<T: FromValue + Send + Sync + 'static> FromValue for LPooled<Vec<T>> {
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {{
+                let mut t: LPooled<Vec<T>> = LPooled::take();
+                for elt in $a.iter() {
+                    t.push(elt.clone().cast_to::<T>()?)
+                }
+                Ok(t)
+            }};
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        <LPooled<Vec<T>> as FromValue>::from_value(v).ok()
+    }
+}
+
+impl<T: Into<Value>> From<LPooled<Vec<T>>> for Value {
+    fn from(mut v: LPooled<Vec<T>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(v.drain(..).map(|e| e.into())))
+    }
+}
+
 impl<T: Into<Value> + Clone + Send + Sync> From<GPooled<Vec<T>>> for Value {
     fn from(mut v: GPooled<Vec<T>>) -> Value {
         Value::Array(ValArray::from_iter_exact(v.drain(..).map(|e| e.into())))
@@ -1087,6 +1120,112 @@ impl<K: Into<Value>, V: Into<Value>, S: BuildHasher + Default> From<HashMap<K, V
     }
 }
 
+impl<K: FromValue + Eq + Hash, V: FromValue, S: BuildHasher + Default> FromValue
+    for LPooled<HashMap<K, V, S>>
+{
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<(K, V)>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => {
+                elts.iter().map(|v| v.clone().get_as::<(K, V)>()).collect()
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>, V: Into<Value>, S: BuildHasher + Default>
+    From<LPooled<HashMap<K, V, S>>> for Value
+{
+    fn from(mut h: LPooled<HashMap<K, V, S>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain().map(|v| v.into())))
+    }
+}
+
+impl<K: FromValue + Eq + Hash, V: FromValue> FromValue for AHashMap<K, V> {
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<(K, V)>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => {
+                elts.iter().map(|v| v.clone().get_as::<(K, V)>()).collect()
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<K: Into<Value>, V: Into<Value>> From<AHashMap<K, V>> for Value {
+    fn from(h: AHashMap<K, V>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.into_iter().map(|v| v.into())))
+    }
+}
+
+impl<K: FromValue + Eq + Hash, V: FromValue> FromValue for LPooled<AHashMap<K, V>> {
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<(K, V)>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => {
+                elts.iter().map(|v| v.clone().get_as::<(K, V)>()).collect()
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>, V: Into<Value>> From<LPooled<AHashMap<K, V>>> for Value {
+    fn from(mut h: LPooled<AHashMap<K, V>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain().map(|v| v.into())))
+    }
+}
+
 impl<K: FromValue + Ord, V: FromValue> FromValue for BTreeMap<K, V> {
     fn from_value(v: Value) -> Result<Self> {
         macro_rules! convert {
@@ -1150,6 +1289,106 @@ impl<K: FromValue + Eq + Hash, S: BuildHasher + Default> FromValue for HashSet<K
 impl<K: Into<Value>, S: BuildHasher + Default> From<HashSet<K, S>> for Value {
     fn from(h: HashSet<K, S>) -> Value {
         Value::Array(ValArray::from_iter_exact(h.into_iter().map(|v| v.into())))
+    }
+}
+
+impl<K: FromValue + Eq + Hash, S: BuildHasher + Default> FromValue
+    for LPooled<HashSet<K, S>>
+{
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<K>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => elts.iter().map(|v| v.clone().get_as::<K>()).collect(),
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>, S: BuildHasher + Default> From<LPooled<HashSet<K, S>>>
+    for Value
+{
+    fn from(mut h: LPooled<HashSet<K, S>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain().map(|v| v.into())))
+    }
+}
+
+impl<K: FromValue + Eq + Hash> FromValue for AHashSet<K> {
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<K>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => elts.iter().map(|v| v.clone().get_as::<K>()).collect(),
+            _ => None,
+        }
+    }
+}
+
+impl<K: Into<Value>> From<AHashSet<K>> for Value {
+    fn from(h: AHashSet<K>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.into_iter().map(|v| v.into())))
+    }
+}
+
+impl<K: FromValue + Eq + Hash> FromValue for LPooled<AHashSet<K>> {
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<K>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => elts.iter().map(|v| v.clone().get_as::<K>()).collect(),
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>> From<LPooled<AHashSet<K>>> for Value {
+    fn from(mut h: LPooled<AHashSet<K>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain().map(|v| v.into())))
     }
 }
 
@@ -1223,6 +1462,44 @@ impl<K: Into<Value>, V: Into<Value>, S: BuildHasher + Default> From<IndexMap<K, 
     }
 }
 
+impl<K: FromValue + Eq + Hash, V: FromValue, S: BuildHasher + Default> FromValue
+    for LPooled<IndexMap<K, V, S>>
+{
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter().map(|v| v.clone().cast_to::<(K, V)>()).collect()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => {
+                elts.iter().map(|v| v.clone().get_as::<(K, V)>()).collect()
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>, V: Into<Value>, S: BuildHasher + Default>
+    From<LPooled<IndexMap<K, V, S>>> for Value
+{
+    fn from(mut h: LPooled<IndexMap<K, V, S>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain(..).map(|v| v.into())))
+    }
+}
+
 impl<K: FromValue + Eq + Hash, S: BuildHasher + Default> FromValue for IndexSet<K, S> {
     fn from_value(v: Value) -> Result<Self> {
         macro_rules! convert {
@@ -1257,6 +1534,44 @@ impl<K: Into<Value>, S: BuildHasher + Default> From<IndexSet<K, S>> for Value {
     }
 }
 
+impl<K: FromValue + Eq + Hash, S: BuildHasher + Default> FromValue
+    for LPooled<IndexSet<K, S>>
+{
+    fn from_value(v: Value) -> Result<Self> {
+        macro_rules! convert {
+            ($a:expr) => {
+                $a.iter()
+                    .map(|v| v.clone().cast_to::<K>())
+                    .collect::<Result<LPooled<IndexSet<K, S>>>>()
+            };
+        }
+        match v {
+            Value::Array(a) => convert!(a),
+            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
+                match v {
+                    Value::Array(a) => convert!(a),
+                    _ => bail!("can't cast"),
+                }
+            }),
+        }
+    }
+
+    fn get(v: Value) -> Option<Self> {
+        match v {
+            Value::Array(elts) => elts.iter().map(|v| v.clone().get_as::<K>()).collect(),
+            _ => None,
+        }
+    }
+}
+
+impl<K: Hash + Eq + Into<Value>, S: BuildHasher + Default> From<LPooled<IndexSet<K, S>>>
+    for Value
+{
+    fn from(mut h: LPooled<IndexSet<K, S>>) -> Value {
+        Value::Array(ValArray::from_iter_exact(h.drain(..).map(|v| v.into())))
+    }
+}
+
 impl<T: FromValue> FromValue for Option<T> {
     fn from_value(v: Value) -> Result<Self> {
         match v {
@@ -1279,7 +1594,7 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
-use enumflags2::{BitFlag, BitFlags, _internal::RawBitFlags};
+use enumflags2::{_internal::RawBitFlags, BitFlag, BitFlags};
 impl<T> FromValue for BitFlags<T>
 where
     T: BitFlag,
@@ -1326,8 +1641,8 @@ impl From<uuid::Uuid> for Value {
 }
 
 thread_local! {
-    static POOLS: RefCell<FxHashMap<TypeId, Box<dyn Any>>> =
-        RefCell::new(HashMap::default());
+    static POOLS: RefCell<AHashMap<TypeId, Box<dyn Any>>> =
+        RefCell::new(AHashMap::default());
 }
 
 impl<T: FromValue + Send + Sync + 'static> FromValue for GPooled<Vec<T>> {
@@ -1362,32 +1677,5 @@ impl<T: FromValue + Send + Sync + 'static> FromValue for GPooled<Vec<T>> {
 
     fn get(v: Value) -> Option<Self> {
         <GPooled<Vec<T>> as FromValue>::from_value(v).ok()
-    }
-}
-
-impl<T: FromValue + Send + Sync + 'static> FromValue for LPooled<Vec<T>> {
-    fn from_value(v: Value) -> Result<Self> {
-        macro_rules! convert {
-            ($a:expr) => {{
-                let mut t: LPooled<Vec<T>> = LPooled::take();
-                for elt in $a.iter() {
-                    t.push(elt.clone().cast_to::<T>()?)
-                }
-                Ok(t)
-            }};
-        }
-        match v {
-            Value::Array(a) => convert!(a),
-            v => v.cast(Typ::Array).ok_or_else(|| anyhow!("can't cast")).and_then(|v| {
-                match v {
-                    Value::Array(a) => convert!(a),
-                    _ => bail!("can't cast"),
-                }
-            }),
-        }
-    }
-
-    fn get(v: Value) -> Option<Self> {
-        <LPooled<Vec<T>> as FromValue>::from_value(v).ok()
     }
 }

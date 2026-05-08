@@ -3,11 +3,11 @@ use super::{
     Cursor, FileHeader, Id, PathMapping, RecordHeader, Seek, CURSOR_BATCH_POOL, IMG_POOL,
     PM_POOL,
 };
+use ahash::AHashMap;
 use anyhow::{Context, Result};
 use bytes::{Buf, BufMut};
 use chrono::prelude::*;
 use fs3::FileExt;
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use indexmap::IndexMap;
 use log::{error, info};
 use memmap2::Mmap;
@@ -16,6 +16,7 @@ use netidx::{
     path::Path,
     subscriber::Event,
 };
+use nohash::{IntMap, IntSet};
 use parking_lot::{
     lock_api::{RwLockUpgradableReadGuard, RwLockWriteGuard},
     Mutex, RwLock, RwLockReadGuard,
@@ -25,7 +26,7 @@ use std::{
     self,
     cell::RefCell,
     cmp::max,
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     fmt,
     fs::{File, OpenOptions},
     iter::IntoIterator,
@@ -58,8 +59,8 @@ impl std::error::Error for AlreadyCompressed {}
 
 #[derive(Debug)]
 pub struct ArchiveIndex {
-    path_by_id: IndexMap<Id, Path, FxBuildHasher>,
-    id_by_path: FxHashMap<Path, Id>,
+    path_by_id: IndexMap<Id, Path, nohash::BuildNoHashHasher<Id>>,
+    id_by_path: AHashMap<Path, Id>,
     imagemap: ArrayMap<DateTime<Utc>, usize>,
     deltamap: ArrayMap<DateTime<Utc>, usize>,
     time_basis: DateTime<Utc>,
@@ -69,8 +70,8 @@ pub struct ArchiveIndex {
 impl ArchiveIndex {
     pub(super) fn new() -> Self {
         ArchiveIndex {
-            path_by_id: IndexMap::with_hasher(FxBuildHasher::default()),
-            id_by_path: HashMap::default(),
+            path_by_id: IndexMap::default(),
+            id_by_path: AHashMap::default(),
             imagemap: ArrayMap::new(),
             deltamap: ArrayMap::new(),
             time_basis: DateTime::<Utc>::MIN_UTC,
@@ -392,7 +393,7 @@ impl ArchiveReader {
     }
 
     fn scan_index_at(
-        index: &FxHashSet<Id>,
+        index: &IntSet<Id>,
         compressed: bool,
         mmap: &Mmap,
         pos: usize,
@@ -491,16 +492,16 @@ impl ArchiveReader {
     /// cursor start need to be read.
     pub fn build_image(
         &self,
-        filter: Option<&FxHashSet<Id>>,
+        filter: Option<&IntSet<Id>>,
         cursor: &Cursor,
-    ) -> Result<GPooled<FxHashMap<Id, Event>>> {
+    ) -> Result<GPooled<IntMap<Id, Event>>> {
         self.check_remap_rescan(false)?;
         let pos = match cursor.current {
             None => cursor.start,
             Some(pos) => Bound::Included(pos),
         };
         match pos {
-            Bound::Unbounded => Ok(GPooled::orphan(HashMap::default())),
+            Bound::Unbounded => Ok(GPooled::orphan(IntMap::default())),
             _ => {
                 let mut image = IMG_POOL.take();
                 let index = self.index.read();
@@ -561,7 +562,7 @@ impl ArchiveReader {
         compressed: bool,
         index: &'a ArchiveIndex,
         mmap: &'a Mmap,
-        filter: Option<&'a FxHashSet<Id>>,
+        filter: Option<&'a IntSet<Id>>,
         start: Bound<DateTime<Utc>>,
         end: Bound<DateTime<Utc>>,
     ) -> impl Iterator<Item = (DateTime<Utc>, usize)> + 'a {
@@ -589,7 +590,7 @@ impl ArchiveReader {
     /// batches read.
     pub fn read_deltas(
         &self,
-        filter: Option<&FxHashSet<Id>>,
+        filter: Option<&IntSet<Id>>,
         cursor: &mut Cursor,
         n: usize,
     ) -> Result<(usize, GPooled<VecDeque<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>>)>
@@ -634,7 +635,7 @@ impl ArchiveReader {
     /// changing the cursor position.
     pub fn read_next(
         &self,
-        filter: Option<&FxHashSet<Id>>,
+        filter: Option<&IntSet<Id>>,
         cursor: &Cursor,
     ) -> Result<Option<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>> {
         self.check_remap_rescan(false)?;

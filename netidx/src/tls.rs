@@ -1,7 +1,7 @@
 //! TLS configuration and utilities.
 use crate::config::{Tls, TlsIdentity};
+use ahash::AHashMap;
 use anyhow::{Context, Result};
-use fxhash::FxHashMap;
 use log::{debug, info, warn};
 use parking_lot::Mutex;
 use rustls_pki_types::{
@@ -10,7 +10,7 @@ use rustls_pki_types::{
 };
 use smallvec::SmallVec;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt, mem,
     sync::{Arc, LazyLock},
 };
@@ -69,8 +69,8 @@ pub(crate) fn get_names(cert: &[u8]) -> Result<Option<Names>> {
     Ok(cn.map(|cn| Names { cn, alt_name }))
 }
 
-static CACHED: LazyLock<Mutex<FxHashMap<String, String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::default()));
+static CACHED: LazyLock<Mutex<AHashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(AHashMap::default()));
 
 /// pre cache the password for a private key.
 ///

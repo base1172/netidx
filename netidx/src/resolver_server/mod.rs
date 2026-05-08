@@ -12,22 +12,23 @@ use crate::{
     },
     tls, utils,
 };
+use ahash::AHashMap;
 use anyhow::{Context, Result};
 use arcstr::{literal, ArcStr};
 use auth::{UserInfo, ANONYMOUS};
 use config::{Config, MemberServer};
 use cross_krb5::{AcceptFlags, K5ServerCtx, ServerCtx, Step};
 use futures::{channel::oneshot, prelude::*, select_biased};
-use fxhash::FxHashMap;
 use log::{debug, error, info, trace, warn};
 use netidx_core::{pack::BoundedBytes, utils::make_sha3_token};
+use nohash::IntSet;
 use parking_lot::Mutex as SyncMutex;
 use poolshark::global::{GPooled, Pool};
 use rand::{rng, RngExt};
 use secctx::{K5SecData, LocalSecData, SecCtx, TlsSecData};
 use shard_store::Store;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::hash_map::Entry,
     fmt::Debug,
     mem,
     net::SocketAddr,
@@ -57,11 +58,11 @@ static READ_BATCHES: LazyLock<Pool<Vec<ToRead>>> =
 
 atomic_id!(CId);
 
-struct CTracker(SyncMutex<HashSet<CId>>);
+struct CTracker(SyncMutex<IntSet<CId>>);
 
 impl CTracker {
     fn new() -> Self {
-        CTracker(SyncMutex::new(HashSet::new()))
+        CTracker(SyncMutex::new(IntSet::default()))
     }
 
     fn open(&self) -> CId {
@@ -84,7 +85,7 @@ enum ClientInfo {
     Running { publisher: Arc<Publisher>, stop: oneshot::Sender<()> },
 }
 
-struct ClinfosInner(FxHashMap<SocketAddr, ClientInfo>);
+struct ClinfosInner(AHashMap<SocketAddr, ClientInfo>);
 
 impl ClinfosInner {
     async fn wait_running<'b, 'a, F, A, R>(&'b mut self, addr: &SocketAddr, f: F) -> R
@@ -239,7 +240,7 @@ impl Deref for Clinfos {
 
 impl Clinfos {
     fn new() -> Self {
-        Clinfos(Mutex::new(ClinfosInner(HashMap::default())))
+        Clinfos(Mutex::new(ClinfosInner(AHashMap::default())))
     }
 }
 

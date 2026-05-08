@@ -2,7 +2,6 @@ use super::common::{
     krb5_authentication, DesiredAuth, Response, ResponseChan, FROMWRITEPOOL, HELLO_TO,
     PUBLISHERPOOL, RAWFROMWRITEPOOL,
 };
-
 use crate::{
     channel::{self, Channel, K5CtxWrap},
     os::local_auth::AuthClient,
@@ -13,6 +12,7 @@ use crate::{
     },
     tls, utils,
 };
+use ahash::{AHashMap, AHasher};
 use anyhow::{anyhow, Result};
 use arcstr::ArcStr;
 use cross_krb5::{ClientCtx, K5Ctx};
@@ -22,14 +22,16 @@ use futures::{
     prelude::*,
     select_biased,
 };
-use fxhash::{FxBuildHasher, FxHashMap};
 use indexmap::IndexMap;
 use log::{debug, info, warn};
 use netidx_netproto::resolver::PublisherPriority;
 use parking_lot::{Mutex, RwLock};
 use poolshark::global::GPooled;
 use rand::{rng, RngExt};
-use std::{cmp::max, fmt::Debug, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    cmp::max, fmt::Debug, hash::BuildHasherDefault, net::SocketAddr, sync::Arc,
+    time::Duration,
+};
 use tokio::{
     net::TcpStream,
     sync::broadcast::{self, error::RecvError},
@@ -67,8 +69,8 @@ struct Connection {
     resolver_addr: SocketAddr,
     resolver_auth: Auth,
     write_addr: SocketAddr,
-    published: IndexMap<Path, ToWrite, FxBuildHasher>,
-    secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+    published: IndexMap<Path, ToWrite, BuildHasherDefault<AHasher>>,
+    secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
     security_context: Option<K5CtxWrap<ClientCtx>>,
     tls: Option<tls::CachedConnector>,
     desired_auth: DesiredAuth,
@@ -495,7 +497,7 @@ impl Connection {
         write_addr: SocketAddr,
         priority: PublisherPriority,
         desired_auth: DesiredAuth,
-        secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         tls: Option<tls::CachedConnector>,
     ) {
         let now = Instant::now();
@@ -571,7 +573,7 @@ async fn write_mgr(
     mut receiver: mpsc::UnboundedReceiver<Batch>,
     resolver: Arc<Referral>,
     desired_auth: DesiredAuth,
-    secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+    secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
     write_addr: SocketAddr,
     priority: PublisherPriority,
     tls: Option<tls::CachedConnector>,
@@ -628,7 +630,7 @@ impl WriteClient {
         desired_auth: DesiredAuth,
         write_addr: SocketAddr,
         priority: PublisherPriority,
-        secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         tls: Option<tls::CachedConnector>,
     ) -> Self {
         let (to_tx, to_rx) = mpsc::unbounded();

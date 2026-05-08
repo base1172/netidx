@@ -11,20 +11,17 @@ use crate::{
     tls,
     utils::Either,
 };
+use ahash::AHashSet;
 use anyhow::{Context, Error, Result};
 use cross_krb5::ClientCtx;
 use futures::{
     channel::{mpsc, oneshot},
     prelude::*,
 };
-use fxhash::FxHashSet;
 use log::{info, warn};
-use poolshark::global::GPooled;
+use poolshark::{global::GPooled, local::LPooled};
 use rand::{rng, seq::SliceRandom, RngExt};
-use std::{
-    cmp::max, collections::HashSet, fmt::Debug, net::SocketAddr, sync::Arc,
-    time::Duration,
-};
+use std::{cmp::max, fmt::Debug, net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{net::TcpStream, task, time};
 
 // continue with timeout
@@ -39,7 +36,7 @@ macro_rules! cwt {
 }
 
 async fn connect(
-    bad_addrs: &mut FxHashSet<SocketAddr>,
+    bad_addrs: &mut AHashSet<SocketAddr>,
     resolver: &Referral,
     desired_auth: &DesiredAuth,
     tls: &Option<tls::CachedConnector>,
@@ -194,7 +191,7 @@ async fn connection(
     tls: Option<tls::CachedConnector>,
 ) {
     let mut con: Option<Channel> = None;
-    let mut bad_addrs: FxHashSet<SocketAddr> = HashSet::default();
+    let mut bad_addrs: LPooled<AHashSet<SocketAddr>> = LPooled::take();
     'main: loop {
         match receiver.next().await {
             None => break,
@@ -212,7 +209,7 @@ async fn connection(
                     let c = match con {
                         Some(ref mut c) => c,
                         None => {
-                            match connect(&mut bad_addrs, &resolver, &desired_auth, &tls)
+                            match connect(&mut *bad_addrs, &resolver, &desired_auth, &tls)
                                 .await
                             {
                                 Ok(c) => {

@@ -3,10 +3,10 @@ use crate::{
     logfile::{ArchiveReader, BatchItem},
     logfile_collection::{self, ArchiveCollectionWriter, ArchiveIndex},
 };
+use ahash::AHashMap;
 use anyhow::{Context, Error, Result};
 use arcstr::ArcStr;
 use chrono::prelude::*;
-use fxhash::FxHashMap;
 use log::error;
 use netidx::{
     protocol::value::FromValue,
@@ -16,10 +16,11 @@ use netidx::{
 };
 use netidx_core::atomic_id;
 use netidx_derive::Pack;
+use nohash::IntMap;
 use parking_lot::{Mutex, RwLock};
 use poolshark::global::GPooled;
 use serde_derive::{Deserialize, Serialize};
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 use tokio::{sync::broadcast, task::JoinSet};
 
 mod oneshot;
@@ -95,14 +96,14 @@ pub enum BCastMsg {
 
 pub struct Shards {
     config: Arc<Config>,
-    pub spec: FxHashMap<ShardId, GlobSet>,
-    pub by_id: FxHashMap<ShardId, ArcStr>,
-    pub by_name: FxHashMap<ArcStr, ShardId>,
-    pub indexes: RwLock<FxHashMap<ShardId, ArchiveIndex>>,
-    pub pathindexes: FxHashMap<ShardId, ArchiveReader>,
-    pub heads: RwLock<FxHashMap<ShardId, ArchiveReader>>,
-    pub bcast: FxHashMap<ShardId, broadcast::Sender<BCastMsg>>,
-    pub writers: Mutex<FxHashMap<ShardId, ArchiveCollectionWriter>>,
+    pub spec: IntMap<ShardId, GlobSet>,
+    pub by_id: IntMap<ShardId, ArcStr>,
+    pub by_name: AHashMap<ArcStr, ShardId>,
+    pub indexes: RwLock<IntMap<ShardId, ArchiveIndex>>,
+    pub pathindexes: IntMap<ShardId, ArchiveReader>,
+    pub heads: RwLock<IntMap<ShardId, ArchiveReader>>,
+    pub bcast: IntMap<ShardId, broadcast::Sender<BCastMsg>>,
+    pub writers: Mutex<IntMap<ShardId, ArchiveCollectionWriter>>,
 }
 
 impl Shards {
@@ -110,14 +111,14 @@ impl Shards {
         use std::fs;
         let mut t = Self {
             config: config.clone(),
-            spec: HashMap::default(),
-            by_id: HashMap::default(),
-            by_name: HashMap::default(),
-            indexes: RwLock::new(HashMap::default()),
-            pathindexes: HashMap::default(),
-            heads: RwLock::new(HashMap::default()),
-            bcast: HashMap::default(),
-            writers: Mutex::new(HashMap::default()),
+            spec: IntMap::default(),
+            by_id: IntMap::default(),
+            by_name: AHashMap::default(),
+            indexes: RwLock::new(IntMap::default()),
+            pathindexes: IntMap::default(),
+            heads: RwLock::new(IntMap::default()),
+            bcast: IntMap::default(),
+            writers: Mutex::new(IntMap::default()),
         };
         for ent in fs::read_dir(&config.archive_directory)? {
             let ent = ent?;
@@ -142,14 +143,14 @@ impl Shards {
     fn from_cfg(config: &Arc<Config>) -> Result<Arc<Self>> {
         let mut t = Self {
             config: config.clone(),
-            spec: HashMap::default(),
-            by_id: HashMap::default(),
-            by_name: HashMap::default(),
-            indexes: RwLock::new(HashMap::default()),
-            pathindexes: HashMap::default(),
-            heads: RwLock::new(HashMap::default()),
-            bcast: HashMap::default(),
-            writers: Mutex::new(HashMap::default()),
+            spec: IntMap::default(),
+            by_id: IntMap::default(),
+            by_name: AHashMap::default(),
+            indexes: RwLock::new(IntMap::default()),
+            pathindexes: IntMap::default(),
+            heads: RwLock::new(IntMap::default()),
+            bcast: IntMap::default(),
+            writers: Mutex::new(IntMap::default()),
         };
         let mut writers = t.writers.lock();
         for (name, rcfg) in config.record.iter() {

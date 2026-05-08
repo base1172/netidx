@@ -11,10 +11,11 @@ use crate::{
     },
     utils,
 };
+use ahash::{AHashMap, AHashSet};
 use bytes::Bytes;
-use fxhash::FxHashMap;
 use immutable_chunkmap::set::Set as ISet;
 use log::debug;
+use nohash::IntMap;
 use poolshark::global::{GPooled, Pool};
 use std::{
     clone::Clone,
@@ -22,7 +23,6 @@ use std::{
         hash_map::Entry,
         BTreeMap,
         Bound::{self, Excluded, Included, Unbounded},
-        HashMap, HashSet,
     },
     convert::AsRef,
     hash::Hash,
@@ -33,7 +33,7 @@ use std::{
 
 static SIGNED_PUBS_POOL: LazyLock<Pool<Vec<PublisherRef>>> =
     LazyLock::new(|| Pool::new(100, 100));
-static BY_ID_POOL: LazyLock<Pool<FxHashMap<PublisherId, PublisherRef>>> =
+static BY_ID_POOL: LazyLock<Pool<IntMap<PublisherId, PublisherRef>>> =
     LazyLock::new(|| Pool::new(100, 100));
 pub(super) static PATH_POOL: LazyLock<Pool<Vec<Path>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
@@ -69,12 +69,12 @@ fn with_trailing<R, F: FnOnce(&str) -> R>(p: &str, f: F) -> R {
 #[derive(Debug)]
 struct HCSet<T: 'static + Ord + Clone + Hash> {
     ops: usize,
-    sets: FxHashMap<Set<T>, ()>,
+    sets: AHashMap<Set<T>, ()>,
 }
 
 impl<T: 'static + Ord + Clone + Hash> HCSet<T> {
     fn new() -> Self {
-        Self { ops: 0, sets: HashMap::default() }
+        Self { ops: 0, sets: AHashMap::default() }
     }
 
     fn hashcons(&mut self, set: Set<T>) -> Set<T> {
@@ -125,15 +125,15 @@ fn column_path_parts<S: AsRef<str>>(path: &S) -> Option<(&str, &str)> {
 
 #[derive(Debug)]
 pub(super) struct Store {
-    publishers_by_id: FxHashMap<PublisherId, Arc<Publisher>>,
-    publishers_by_addr: FxHashMap<SocketAddr, PublisherId>,
-    published_by_path: HashMap<Path, Set<PublisherId>>,
-    flags_by_path: HashMap<Path, u32>,
-    published_by_id: FxHashMap<PublisherId, HashSet<Path>>,
-    published_by_level: FxHashMap<usize, BTreeMap<Path, Z64>>,
-    columns: HashMap<Path, HashMap<Path, Z64>>,
+    publishers_by_id: IntMap<PublisherId, Arc<Publisher>>,
+    publishers_by_addr: AHashMap<SocketAddr, PublisherId>,
+    published_by_path: AHashMap<Path, Set<PublisherId>>,
+    flags_by_path: AHashMap<Path, u32>,
+    published_by_id: IntMap<PublisherId, AHashSet<Path>>,
+    published_by_level: IntMap<usize, BTreeMap<Path, Z64>>,
+    columns: AHashMap<Path, AHashMap<Path, Z64>>,
     defaults: BTreeMap<Path, Set<PublisherId>>,
-    defaults_by_id: FxHashMap<PublisherId, HashSet<Path>>,
+    defaults_by_id: IntMap<PublisherId, AHashSet<Path>>,
     parent: Option<Referral>,
     children: BTreeMap<Path, Referral>,
     sets: HCSet<PublisherId>,
@@ -145,15 +145,15 @@ impl Store {
         children: BTreeMap<Path, Referral>,
     ) -> Self {
         let mut t = Store {
-            publishers_by_id: HashMap::default(),
-            publishers_by_addr: HashMap::default(),
-            published_by_path: HashMap::default(),
-            flags_by_path: HashMap::default(),
-            published_by_id: HashMap::default(),
-            published_by_level: HashMap::default(),
-            columns: HashMap::new(),
+            publishers_by_id: IntMap::default(),
+            publishers_by_addr: AHashMap::default(),
+            published_by_path: AHashMap::default(),
+            flags_by_path: AHashMap::default(),
+            published_by_id: IntMap::default(),
+            published_by_level: IntMap::default(),
+            columns: AHashMap::new(),
             defaults: BTreeMap::new(),
-            defaults_by_id: HashMap::default(),
+            defaults_by_id: IntMap::default(),
             parent,
             children,
             sets: HCSet::new(),
@@ -320,7 +320,7 @@ impl Store {
             None => {
                 self.columns.insert(
                     Path::from(String::from(root)),
-                    HashMap::from_iter(iter::once((
+                    AHashMap::from_iter(iter::once((
                         Path::from(String::from(name)),
                         Z64(1),
                     ))),
@@ -369,7 +369,7 @@ impl Store {
             *pubs = self.sets.add(pubs, publisher.id);
             self.defaults_by_id
                 .entry(publisher.id)
-                .or_insert_with(HashSet::new)
+                .or_insert_with(AHashSet::default)
                 .insert(path.clone());
             pubs.len() > len
         } else {
@@ -379,7 +379,7 @@ impl Store {
             *pubs = self.sets.add(pubs, publisher.id);
             self.published_by_id
                 .entry(publisher.id)
-                .or_insert_with(HashSet::new)
+                .or_insert_with(AHashSet::new)
                 .insert(path.clone());
             let up = pubs.len() > len;
             if up {
@@ -498,12 +498,12 @@ impl Store {
         }
     }
 
-    pub(super) fn published_for_id(&self, id: &PublisherId) -> HashSet<Path> {
-        self.published_by_id.get(id).map(|s| s.clone()).unwrap_or_else(HashSet::new)
+    pub(super) fn published_for_id(&self, id: &PublisherId) -> AHashSet<Path> {
+        self.published_by_id.get(id).map(|s| s.clone()).unwrap_or_else(AHashSet::new)
     }
 
-    fn defaults_for_id(&self, id: &PublisherId) -> HashSet<Path> {
-        self.defaults_by_id.get(id).map(|s| s.clone()).unwrap_or_else(HashSet::new)
+    fn defaults_for_id(&self, id: &PublisherId) -> AHashSet<Path> {
+        self.defaults_by_id.get(id).map(|s| s.clone()).unwrap_or_else(AHashSet::new)
     }
 
     pub(super) fn clear(&mut self, publisher: &Arc<Publisher>) {
@@ -522,7 +522,7 @@ impl Store {
     fn record_publisher(
         &self,
         sec: Option<(&SecCtxDataReadGuard, &UserInfo)>,
-        publishers: &mut FxHashMap<PublisherId, Publisher>,
+        publishers: &mut IntMap<PublisherId, Publisher>,
         id: &PublisherId,
     ) {
         publishers.entry(*id).or_insert_with(|| {
@@ -553,7 +553,7 @@ impl Store {
     fn resolve_default(
         &self,
         sec: Option<(&SecCtxDataReadGuard, &UserInfo)>,
-        publishers: &mut FxHashMap<PublisherId, Publisher>,
+        publishers: &mut IntMap<PublisherId, Publisher>,
         path: &Path,
     ) -> (u32, GPooled<Vec<PublisherRef>>) {
         let default = self
@@ -580,7 +580,7 @@ impl Store {
 
     pub(super) fn resolve(
         &self,
-        publishers: &mut FxHashMap<PublisherId, Publisher>,
+        publishers: &mut IntMap<PublisherId, Publisher>,
         path: &Path,
     ) -> (u32, GPooled<Vec<PublisherRef>>) {
         let (flags, mut pubs) = self.resolve_default(None, publishers, path);
@@ -610,7 +610,7 @@ impl Store {
 
     pub(super) fn resolve_and_sign(
         &self,
-        publishers: &mut FxHashMap<PublisherId, Publisher>,
+        publishers: &mut IntMap<PublisherId, Publisher>,
         sec: &SecCtxDataReadGuard,
         uifo: &UserInfo,
         now: u64,

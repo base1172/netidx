@@ -24,7 +24,7 @@ digest = { workspace = true }
 enumflags2 = { workspace = true }
 escaping = { workspace = true }
 futures = { workspace = true }
-fxhash = { workspace = true }
+nohash = { workspace = true }
 indexmap = { workspace = true }
 immutable-chunkmap = { workspace = true }
 parking_lot = { workspace = true }

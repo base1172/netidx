@@ -14,7 +14,6 @@ use anyhow::Result;
 use arcstr::{literal, ArcStr};
 use chrono::prelude::*;
 use futures::{channel::mpsc, future, prelude::*, select_biased};
-use fxhash::{FxHashMap, FxHashSet};
 use log::{debug, error};
 use netidx::{
     path::Path,
@@ -30,14 +29,12 @@ use netidx_protocols::{
     rpc::server::{ArgSpec, Proc, RpcCall, RpcReply},
     rpc_err,
 };
+use nohash::{IntMap, IntSet};
 use poolshark::global::Pool;
 use serde_derive::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::{
-    collections::{
-        hash_map::{Entry, OccupiedEntry},
-        HashMap,
-    },
+    collections::hash_map::{Entry, OccupiedEntry},
     ops::Bound,
     sync::{Arc, LazyLock},
 };
@@ -52,7 +49,7 @@ pub(crate) struct OneshotConfig {
 
 atomic_id!(Oid);
 
-pub(crate) static FILTER: LazyLock<Pool<FxHashSet<Id>>> =
+pub(crate) static FILTER: LazyLock<Pool<IntSet<Id>>> =
     LazyLock::new(|| Pool::new(100, 10000));
 
 #[derive(Debug, Pack)]
@@ -272,7 +269,7 @@ pub(super) async fn run(
     let our_path = cluster.path();
     let (control_tx, mut control_rx) = mpsc::channel(3);
     let mut pending: JoinSet<(Oid, Path, Result<OneshotReply>)> = JoinSet::new();
-    let mut we_initiated: FxHashMap<Oid, PendingOneshot> = HashMap::default();
+    let mut we_initiated: IntMap<Oid, PendingOneshot> = IntMap::default();
     let _proc = define_rpc!(
         &publisher,
         publish_config.base.append("oneshot"),

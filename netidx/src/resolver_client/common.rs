@@ -9,15 +9,15 @@ use crate::{
 use anyhow::Result;
 use cross_krb5::{ClientCtx, InitiateFlags, Step};
 use futures::channel::oneshot;
-use fxhash::FxHashMap;
 use netidx_core::pack::BoundedBytes;
+use nohash::IntMap;
 use poolshark::global::{GPooled, Pool};
 use std::{fmt::Debug, str::FromStr, sync::LazyLock, time::Duration};
 use tokio::{net::TcpStream, task, time};
 
 pub(super) const HELLO_TO: Duration = Duration::from_secs(15);
 
-pub(super) static PUBLISHERPOOL: LazyLock<Pool<FxHashMap<PublisherId, Publisher>>> =
+pub(super) static PUBLISHERPOOL: LazyLock<Pool<IntMap<PublisherId, Publisher>>> =
     LazyLock::new(|| Pool::new(1000, 100));
 pub(super) static RAWTOREADPOOL: LazyLock<Pool<Vec<ToRead>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
@@ -86,7 +86,7 @@ impl FromStr for DesiredAuth {
 }
 
 pub(super) type Response<F> =
-    (GPooled<FxHashMap<PublisherId, Publisher>>, GPooled<Vec<(usize, F)>>);
+    (GPooled<IntMap<PublisherId, Publisher>>, GPooled<Vec<(usize, F)>>);
 
 pub(super) type ResponseChan<F> = oneshot::Receiver<Response<F>>;
 

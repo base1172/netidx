@@ -15,6 +15,7 @@ use crate::{
         },
     },
 };
+use ahash::{AHashMap, AHashSet, AHasher};
 use anyhow::Result;
 use chrono::prelude::*;
 use futures::{
@@ -26,11 +27,11 @@ use futures::{
     prelude::*,
     select,
 };
-use fxhash::FxHashMap;
 use log::{info, trace};
+use nohash::IntMap;
 use poolshark::global::{GPooled, Pool};
 use std::{
-    collections::{hash_map::DefaultHasher, BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     hash::{Hash, Hasher},
     mem,
     net::SocketAddr,
@@ -46,7 +47,7 @@ type ReadR = VecDeque<(u64, FromRead)>;
 type WriteB = Vec<(u64, ToWrite)>;
 type WriteR = Vec<(u64, FromWrite)>;
 
-static PUBLISHERS_POOL: LazyLock<Pool<FxHashMap<PublisherId, Publisher>>> =
+static PUBLISHERS_POOL: LazyLock<Pool<IntMap<PublisherId, Publisher>>> =
     LazyLock::new(|| Pool::new(100, 1000));
 static TO_READ_POOL: LazyLock<Pool<ReadB>> = LazyLock::new(|| Pool::new(100, 10_000));
 static FROM_READ_POOL: LazyLock<Pool<ReadR>> = LazyLock::new(|| Pool::new(100, 10_000));
@@ -54,9 +55,9 @@ static TO_WRITE_POOL: LazyLock<Pool<WriteB>> = LazyLock::new(|| Pool::new(100, 1
 static REPLIES: LazyLock<Pool<Vec<GPooled<ReadR>>>> =
     LazyLock::new(|| Pool::new(10, 1024));
 static FROM_WRITE_POOL: LazyLock<Pool<WriteR>> = LazyLock::new(|| Pool::new(100, 10_000));
-static COLS_HPOOL: LazyLock<Pool<HashMap<Path, Z64>>> =
+static COLS_HPOOL: LazyLock<Pool<AHashMap<Path, Z64>>> =
     LazyLock::new(|| Pool::new(32, 10_000));
-static PATH_HPOOL: LazyLock<Pool<HashSet<Path>>> =
+static PATH_HPOOL: LazyLock<Pool<AHashSet<Path>>> =
     LazyLock::new(|| Pool::new(32, 10_000));
 static PATH_BPOOL: LazyLock<Pool<Vec<GPooled<Vec<Path>>>>> =
     LazyLock::new(|| Pool::new(32, 1024));
@@ -71,7 +72,7 @@ struct ReadRequest {
 }
 
 struct ReadResponse {
-    publishers: GPooled<FxHashMap<PublisherId, Publisher>>,
+    publishers: GPooled<IntMap<PublisherId, Publisher>>,
     batch: GPooled<ReadR>,
 }
 
@@ -85,7 +86,7 @@ struct WriteRequest {
 struct Shard {
     read: UnboundedSender<(ReadRequest, oneshot::Sender<ReadResponse>)>,
     write: UnboundedSender<(WriteRequest, oneshot::Sender<GPooled<WriteR>>)>,
-    internal: UnboundedSender<(PublisherId, oneshot::Sender<HashSet<Path>>)>,
+    internal: UnboundedSender<(PublisherId, oneshot::Sender<AHashSet<Path>>)>,
 }
 
 impl Shard {
@@ -546,7 +547,7 @@ impl Store {
     }
 
     fn shard(&self, path: &Path) -> usize {
-        let mut hasher = DefaultHasher::new();
+        let mut hasher = AHasher::default();
         path.hash(&mut hasher);
         hasher.finish() as usize & self.shard_mask
     }

@@ -41,7 +41,8 @@ ctrlc = { workspace = true }
 derive_builder = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
-fxhash = { workspace = true }
+nohash = { workspace = true }
+ahash = { workspace = true }
 if-addrs = { workspace = true }
 immutable-chunkmap = { workspace = true }
 indexmap = { workspace = true }

@@ -14,9 +14,9 @@ use crate::{
 use anyhow::{bail, Result};
 use arcstr::ArcStr;
 use cross_krb5::{K5Ctx, ServerCtx};
-use fxhash::FxHashMap;
 use log::debug;
 use netidx_core::pack::Pack;
+use nohash::IntMap;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{RwLock, RwLockReadGuard};
 
@@ -50,7 +50,7 @@ pub(super) trait SecDataCommon {
 pub(super) struct SecCtxData<S: 'static> {
     pub(super) users: UserDb,
     pub(super) pmap: PMap,
-    data: FxHashMap<PublisherId, S>,
+    data: IntMap<PublisherId, S>,
 }
 
 impl<S: 'static + SecDataCommon> SecCtxData<S> {

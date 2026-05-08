@@ -6,6 +6,7 @@ mod rpcs;
 mod stats;
 
 use crate::rpcs::RpcApi;
+use ahash::AHashMap;
 use anyhow::{bail, Result};
 use arcstr::{literal, ArcStr};
 pub use db::{Datum, DatumKind, Db, Reply, Sendable, Txn};
@@ -18,7 +19,6 @@ use futures::{
     select_biased,
     stream::FusedStream,
 };
-use fxhash::FxHashMap;
 use log::{error, info};
 use netidx::{
     config::Config,
@@ -30,6 +30,7 @@ use netidx::{
     resolver_client::DesiredAuth,
     utils::BatchItem,
 };
+use nohash::IntMap;
 use parking_lot::Mutex;
 use poolshark::global::GPooled;
 use rpcs::{RpcRequest, RpcRequestKind};
@@ -168,8 +169,8 @@ struct ContainerInner {
     locked: BTreeMap<Path, bool>,
     write_updates_tx: mpsc::Sender<GPooled<Vec<WriteRequest>>>,
     write_updates_rx: mpsc::Receiver<GPooled<Vec<WriteRequest>>>,
-    by_id: FxHashMap<Id, Arc<Published>>,
-    by_path: FxHashMap<Path, Arc<Published>>,
+    by_id: IntMap<Id, Arc<Published>>,
+    by_path: AHashMap<Path, Arc<Published>>,
     publish_events: mpsc::UnboundedReceiver<PEvent>,
     roots: Roots,
     db_updates: mpsc::UnboundedReceiver<db::Update>,
@@ -214,8 +215,8 @@ impl ContainerInner {
             publisher,
             write_updates_tx,
             write_updates_rx,
-            by_id: FxHashMap::default(),
-            by_path: FxHashMap::default(),
+            by_id: IntMap::default(),
+            by_path: AHashMap::default(),
             publish_events,
             db_updates,
             api,

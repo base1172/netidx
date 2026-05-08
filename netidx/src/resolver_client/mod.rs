@@ -16,6 +16,7 @@ use crate::{
     },
     tls,
 };
+use ahash::{AHashMap, AHashSet};
 use anyhow::Result;
 use arcstr::ArcStr;
 pub use common::DesiredAuth;
@@ -25,17 +26,20 @@ use common::{
     TOREADPOOL, TOWRITEPOOL,
 };
 use futures::future;
-use fxhash::FxHashMap;
 use netidx_netproto::resolver::PublisherPriority;
+use nohash::IntMap;
 use parking_lot::{Mutex, RwLock};
-use poolshark::global::{GPooled, Pool};
+use poolshark::{
+    global::{GPooled, Pool},
+    local::LPooled,
+};
 use read_client::ReadClient;
 use std::{
     collections::{
         hash_map::Entry,
         BTreeMap,
         Bound::{self, Included, Unbounded},
-        HashMap, HashSet,
+        HashMap,
     },
     iter::IntoIterator,
     marker::PhantomData,
@@ -95,7 +99,7 @@ impl Router {
         T: ToPath + Clone + Send + Sync + 'static,
     {
         let now = Instant::now();
-        let mut batches = HashMap::new();
+        let mut batches = AHashMap::default();
         let mut gc = Vec::new();
         let mut id = 0;
         for v in batch.iter() {
@@ -190,7 +194,7 @@ where
         desired_auth: DesiredAuth,
         writer_addr: SocketAddr,
         priority: PublisherPriority,
-        secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         tls: Option<tls::CachedConnector>,
     ) -> Self;
     fn send(&mut self, batch: GPooled<Vec<(usize, T)>>) -> ResponseChan<F>;
@@ -202,7 +206,7 @@ impl Connection<ToRead, FromRead> for ReadClient {
         desired_auth: DesiredAuth,
         _writer_addr: SocketAddr,
         _priority: PublisherPriority,
-        _secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        _secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         tls: Option<tls::CachedConnector>,
     ) -> Self {
         ReadClient::new(resolver, desired_auth, tls)
@@ -219,7 +223,7 @@ impl Connection<ToWrite, FromWrite> for WriteClient {
         desired_auth: DesiredAuth,
         writer_addr: SocketAddr,
         priority: PublisherPriority,
-        secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         tls: Option<tls::CachedConnector>,
     ) -> Self {
         WriteClient::new(resolver, desired_auth, writer_addr, priority, secrets, tls)
@@ -242,7 +246,7 @@ where
     by_server: HashMap<Arc<Referral>, C>,
     writer_addr: SocketAddr,
     priority: PublisherPriority,
-    secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+    secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
     tls: Option<tls::CachedConnector>,
     phantom: PhantomData<(T, F)>,
     f_pool: Pool<Vec<F>>,
@@ -301,7 +305,7 @@ where
         fi_pool: Pool<Vec<(usize, F)>>,
         ti_pool: Pool<Vec<(usize, T)>>,
     ) -> ResolverWrap<C, T, F> {
-        let secrets = Arc::new(RwLock::new(HashMap::default()));
+        let secrets = Arc::new(RwLock::new(AHashMap::default()));
         let tls = default.tls.clone().map(tls::CachedConnector::new);
         let mut router = Router::new();
         let default: Arc<Referral> = Arc::new(default.to_referral());
@@ -322,14 +326,14 @@ where
         })))
     }
 
-    fn secrets(&self) -> Arc<RwLock<FxHashMap<SocketAddr, u128>>> {
+    fn secrets(&self) -> Arc<RwLock<AHashMap<SocketAddr, u128>>> {
         Arc::clone(&self.0.lock().secrets)
     }
 
     async fn send(
         &self,
         batch: &GPooled<Vec<T>>,
-    ) -> Result<(GPooled<FxHashMap<PublisherId, Publisher>>, GPooled<Vec<F>>)> {
+    ) -> Result<(GPooled<IntMap<PublisherId, Publisher>>, GPooled<Vec<F>>)> {
         let mut referrals = 0;
         loop {
             let mut waiters = Vec::new();
@@ -387,12 +391,12 @@ where
 #[derive(Debug, Clone)]
 pub struct ChangeTracker {
     path: Path,
-    by_resolver: FxHashMap<SocketAddr, Z64>,
+    by_resolver: AHashMap<SocketAddr, Z64>,
 }
 
 impl ChangeTracker {
     pub fn new(path: Path) -> Self {
-        ChangeTracker { path, by_resolver: HashMap::default() }
+        ChangeTracker { path, by_resolver: AHashMap::default() }
     }
 
     pub fn path(&self) -> &Path {
@@ -425,8 +429,7 @@ impl ResolverRead {
     pub async fn send(
         &self,
         batch: &GPooled<Vec<ToRead>>,
-    ) -> Result<(GPooled<FxHashMap<PublisherId, Publisher>>, GPooled<Vec<FromRead>>)>
-    {
+    ) -> Result<(GPooled<IntMap<PublisherId, Publisher>>, GPooled<Vec<FromRead>>)> {
         self.0.send(batch).await
     }
 
@@ -436,7 +439,7 @@ impl ResolverRead {
     pub async fn resolve<I>(
         &self,
         batch: I,
-    ) -> Result<(GPooled<FxHashMap<PublisherId, Publisher>>, GPooled<Vec<Resolved>>)>
+    ) -> Result<(GPooled<IntMap<PublisherId, Publisher>>, GPooled<Vec<Resolved>>)>
     where
         I: IntoIterator<Item = Path>,
     {
@@ -494,8 +497,9 @@ impl ResolverRead {
         message: ToRead,
         mut process_reply: F,
     ) -> Result<()> {
-        let mut pending: Vec<Option<Arc<Referral>>> = vec![None];
-        let mut done: HashSet<Arc<Referral>> = HashSet::new();
+        let mut pending: LPooled<Vec<Option<Arc<Referral>>>> = LPooled::take();
+        pending.push(None);
+        let mut done: LPooled<AHashSet<Arc<Referral>>> = LPooled::take();
         let mut referral_cycles = 0;
         while pending.len() > 0 {
             let mut waiters = Vec::new();
@@ -799,7 +803,7 @@ impl ResolverWrite {
         }
     }
 
-    pub(crate) fn secrets(&self) -> Arc<RwLock<FxHashMap<SocketAddr, u128>>> {
+    pub(crate) fn secrets(&self) -> Arc<RwLock<AHashMap<SocketAddr, u128>>> {
         self.0.secrets()
     }
 }

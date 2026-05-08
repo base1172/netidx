@@ -30,7 +30,8 @@ diligent-date-parser = { workspace = true }
 env_logger = { workspace = true }
 fs3 = { workspace = true }
 futures = { workspace = true }
-fxhash = { workspace = true }
+nohash = { workspace = true }
+ahash = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
 memmap2 = { workspace = true }

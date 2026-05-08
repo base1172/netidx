@@ -6,7 +6,6 @@ use anyhow::Result;
 use arcstr::{literal, ArcStr};
 use chrono::prelude::*;
 use futures::{channel::mpsc, prelude::*};
-use fxhash::FxHashMap;
 use netidx::{
     pack::Pack,
     path::Path,
@@ -16,20 +15,21 @@ use netidx::{
 };
 use netidx_derive::Pack;
 use netidx_protocols::{call_rpc, rpc::client::Proc};
+use nohash::IntMap;
 use poolshark::global::{GPooled, Pool};
 use std::{collections::VecDeque, sync::LazyLock, time::Duration};
 use tokio::{task, try_join};
 use triomphe::Arc;
 
-pub(crate) static PATHMAPS: LazyLock<Pool<FxHashMap<Id, Path>>> =
+pub(crate) static PATHMAPS: LazyLock<Pool<IntMap<Id, Path>>> =
     LazyLock::new(|| Pool::new(100, 10_000));
 pub(crate) static SHARDS: LazyLock<Pool<Vec<OneshotReplyShard>>> =
     LazyLock::new(|| Pool::new(100, 128));
 
 #[derive(Debug, Clone, Pack)]
 pub struct OneshotReplyShard {
-    pub pathmap: GPooled<FxHashMap<Id, Path>>,
-    pub image: GPooled<FxHashMap<Id, Event>>,
+    pub pathmap: GPooled<IntMap<Id, Path>>,
+    pub image: GPooled<IntMap<Id, Event>>,
     pub deltas: GPooled<VecDeque<(DateTime<Utc>, GPooled<Vec<BatchItem>>)>>,
 }
 

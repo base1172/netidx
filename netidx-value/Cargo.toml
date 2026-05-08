@@ -22,7 +22,7 @@ compact_str = { workspace = true }
 enumflags2 = { workspace = true }
 escaping = { workspace = true }
 fish-printf = { workspace = true }
-fxhash = { workspace = true }
+ahash = { workspace = true }
 indexmap = { workspace = true }
 immutable-chunkmap = { workspace = true }
 netidx-core = { version = "0.31.0", path = "../netidx-core" }

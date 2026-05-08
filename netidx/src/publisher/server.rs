@@ -16,6 +16,7 @@ use crate::{
     tls,
     utils::{self, BatchItem, Batched, ChanId, ChanWrap},
 };
+use ahash::AHashMap;
 use anyhow::{anyhow, Error, Result};
 use arcstr::literal;
 use bytes::Bytes;
@@ -29,8 +30,8 @@ use futures::{
     select_biased,
     stream::{FuturesUnordered, SelectAll},
 };
-use fxhash::FxHashMap;
 use log::{debug, info};
+use nohash::IntMap;
 use parking_lot::RwLock;
 use poolshark::global::GPooled;
 use protocol::resolver::{AuthChallenge, HashMethod, UserInfo};
@@ -174,7 +175,7 @@ fn write(
     client: ClId,
     gc_on_write: &mut Vec<ChanWrap<GPooled<Vec<WriteRequest>>>>,
     wait_write_res: &mut Vec<(Id, WriteId, oneshot::Receiver<Value>)>,
-    write_batches: &mut FxHashMap<
+    write_batches: &mut IntMap<
         ChanId,
         (GPooled<Vec<WriteRequest>>, Sender<GPooled<Vec<WriteRequest>>>),
     >,
@@ -286,12 +287,10 @@ struct ClientCtx {
     desired_auth: DesiredAuth,
     client: ClId,
     publisher: PublisherWeak,
-    secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+    secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
     batch: Vec<publisher::To>,
-    write_batches: FxHashMap<
-        ChanId,
-        (GPooled<Vec<WriteRequest>>, Sender<GPooled<Vec<WriteRequest>>>),
-    >,
+    write_batches:
+        IntMap<ChanId, (GPooled<Vec<WriteRequest>>, Sender<GPooled<Vec<WriteRequest>>>)>,
     blocked_writes: FuturesUnordered<BlockedWriteFut>,
     flushing_updates: Option<Instant>,
     flush_timeout: Option<Duration>,
@@ -306,7 +305,7 @@ struct ClientCtx {
 impl ClientCtx {
     fn new(
         client: ClId,
-        secrets: Arc<RwLock<FxHashMap<SocketAddr, u128>>>,
+        secrets: Arc<RwLock<AHashMap<SocketAddr, u128>>>,
         publisher: PublisherWeak,
         desired_auth: DesiredAuth,
         tls_ctx: Option<tls::CachedAcceptor>,

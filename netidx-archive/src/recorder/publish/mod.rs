@@ -18,7 +18,6 @@ use controls::{
     STATE_DOC,
 };
 use futures::{channel::mpsc, prelude::*, select_biased};
-use fxhash::FxHashMap;
 use log::{error, info, warn};
 use netidx::{
     publisher::{ClId, Publisher, Value},
@@ -33,9 +32,9 @@ use netidx_protocols::{
     rpc::server::{ArgSpec, Proc},
     rpc_err,
 };
+use nohash::IntMap;
 use parking_lot::Mutex;
 use std::{
-    collections::HashMap,
     ops::Bound,
     sync::{
         atomic::{AtomicU8, Ordering},
@@ -138,7 +137,7 @@ struct SessionIdsInner {
     max_total: usize,
     max_by_client: usize,
     total: usize,
-    by_client: FxHashMap<ClId, usize>,
+    by_client: IntMap<ClId, usize>,
 }
 
 #[derive(Clone)]
@@ -150,7 +149,7 @@ impl SessionIds {
             max_total,
             max_by_client,
             total: 0,
-            by_client: HashMap::default(),
+            by_client: IntMap::default(),
         })))
     }
 

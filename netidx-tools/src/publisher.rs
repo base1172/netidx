@@ -1,9 +1,9 @@
+use ahash::AHashMap;
 use anyhow::{anyhow, Context, Result};
 use futures::{
     channel::mpsc::{self, Receiver},
     prelude::*,
 };
-use fxhash::FxBuildHasher;
 use log::{error, warn};
 use netidx::{
     config::Config,
@@ -13,9 +13,10 @@ use netidx::{
         WriteRequest,
     },
 };
+use nohash::IntMap;
 use parking_lot::Mutex;
 use poolshark::global::GPooled;
-use std::{collections::HashMap, convert::From, sync::Arc, time::Duration};
+use std::{convert::From, sync::Arc, time::Duration};
 use structopt::StructOpt;
 use tokio::{
     io::{stdin, stdout, AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -49,7 +50,7 @@ macro_rules! tryc {
     };
 }
 
-type ById = Arc<Mutex<HashMap<Id, Arc<Val>, FxBuildHasher>>>;
+type ById = Arc<Mutex<IntMap<Id, Arc<Val>>>>;
 
 async fn handle_writes_loop(
     by_id: ById,
@@ -81,9 +82,8 @@ async fn handle_writes_loop(
 pub(super) async fn run(config: Config, auth: DesiredAuth, params: Params) -> Result<()> {
     env_logger::init();
     let timeout = params.timeout.map(Duration::from_secs);
-    let mut by_path: HashMap<Path, Arc<Val>> = HashMap::new();
-    let by_id: ById =
-        Arc::new(Mutex::new(HashMap::with_hasher(FxBuildHasher::default())));
+    let mut by_path: AHashMap<Path, Arc<Val>> = AHashMap::new();
+    let by_id: ById = Arc::new(Mutex::new(IntMap::default()));
     let publisher = PublisherBuilder::new(config)
         .desired_auth(auth)
         .bind_cfg(params.bind)
@@ -94,7 +94,7 @@ pub(super) async fn run(config: Config, auth: DesiredAuth, params: Params) -> Re
     let mut buf = String::new();
     let mut stdin = BufReader::new(stdin());
     fn publish(
-        by_path: &mut HashMap<Path, Arc<Val>>,
+        by_path: &mut AHashMap<Path, Arc<Val>>,
         by_id: &ById,
         publisher: &Publisher,
         path: &str,

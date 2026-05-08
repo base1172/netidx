@@ -4,11 +4,12 @@ use crate::{
     path::Path,
     protocol::{glob::Scope, resolver::Referral},
 };
+use ahash::AHashMap;
 use anyhow::{anyhow, Error, Result};
 use arcstr::ArcStr;
 use chrono::prelude::*;
-use fxhash::FxHashMap;
 use netidx_netproto::resolver;
+use nohash::IntMap;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, Bound, HashMap},
@@ -74,6 +75,8 @@ impl TryFrom<&str> for Permissions {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Entity(u32);
 
+impl nohash::IsEnabled for Entity {}
+
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct UserInfo {
     pub(crate) timestamp: DateTime<Utc>,
@@ -105,9 +108,9 @@ pub(crate) struct UserDb {
     next: u32,
     timeout: chrono::Duration,
     mapper: Mapper,
-    names: FxHashMap<Entity, ArcStr>,
-    entities: FxHashMap<ArcStr, Entity>,
-    users: FxHashMap<ArcStr, Arc<UserInfo>>,
+    names: IntMap<Entity, ArcStr>,
+    entities: AHashMap<ArcStr, Entity>,
+    users: AHashMap<ArcStr, Arc<UserInfo>>,
 }
 
 impl UserDb {
@@ -117,8 +120,8 @@ impl UserDb {
             timeout,
             mapper,
             names: HashMap::default(),
-            entities: HashMap::default(),
-            users: HashMap::default(),
+            entities: AHashMap::default(),
+            users: AHashMap::default(),
         }
     }
 
@@ -194,7 +197,7 @@ thread_local! {
 
 #[derive(Debug)]
 pub(super) struct PMap {
-    normal: BTreeMap<Path, FxHashMap<Entity, Permissions>>,
+    normal: BTreeMap<Path, IntMap<Entity, Permissions>>,
     user_dynamic: BTreeMap<Path, Permissions>,
     group_dynamic: BTreeMap<Path, Vec<(ArcStr, Permissions)>>,
 }

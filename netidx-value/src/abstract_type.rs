@@ -1,6 +1,7 @@
+use crate::Value;
+use ahash::AHashMap;
 use anyhow::bail;
 use bytes::{Buf, BufMut, Bytes};
-use fxhash::FxHashMap;
 use netidx_core::{
     pack::{len_wrapped_decode, len_wrapped_encode, len_wrapped_len, Pack, PackError},
     utils,
@@ -10,7 +11,7 @@ use serde::{de, ser, Deserialize, Serialize};
 use std::{
     any::{Any, TypeId},
     cmp::Ordering,
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     fmt::{self, Debug, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -18,8 +19,6 @@ use std::{
     sync::{Arc, LazyLock},
 };
 use uuid::Uuid;
-
-use crate::Value;
 
 type EncodedLenFn = Box<dyn Fn(&Abstract) -> usize + Send + Sync + 'static>;
 type EncodeFn = Box<
@@ -122,8 +121,8 @@ impl Pack for UnknownAbstractType {
 }
 
 struct Registry {
-    by_uuid: FxHashMap<Uuid, Arc<AbstractVtable>>,
-    by_tid: FxHashMap<TypeId, Uuid>,
+    by_uuid: AHashMap<Uuid, Arc<AbstractVtable>>,
+    by_tid: AHashMap<TypeId, Uuid>,
 }
 
 impl Registry {
@@ -159,7 +158,7 @@ pub static UNKNOWN_ID: Uuid = Uuid::from_bytes([
 ]);
 
 static REGISTRY: LazyLock<RwLock<Registry>> = LazyLock::new(|| {
-    let mut reg = Registry { by_uuid: HashMap::default(), by_tid: HashMap::default() };
+    let mut reg = Registry { by_uuid: AHashMap::default(), by_tid: AHashMap::default() };
     reg.insert::<UnknownAbstractType>(UNKNOWN_ID).unwrap();
     RwLock::new(reg)
 });

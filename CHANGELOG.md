@@ -1,3 +1,10 @@
+# 0.31.10
+
+- replace fxhash and siphash with a mix of nohash and ahash, yielding a 12%
+  performance improvement (stress publisher -> stress subscriber), and an
+  unmeasured but probably substantial performance improvement in the resolver
+  server
+
 # 0.31.9
 
 - Fix a bug in the resolver that could result in duplicated replies to a write

@@ -24,7 +24,8 @@ arcstr = { workspace = true }
 bytes = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
-fxhash = { workspace = true }
+nohash = { workspace = true }
+ahash = { workspace = true }
 log = { workspace = true }
 parking_lot = { workspace = true }
 poolshark = { workspace = true }

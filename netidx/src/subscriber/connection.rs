@@ -18,6 +18,7 @@ use crate::{
     tls,
     utils::{ChanId, ChanWrap},
 };
+use ahash::AHashMap;
 use anyhow::{anyhow, Error, Result};
 use cross_krb5::ClientCtx;
 use futures::{
@@ -29,18 +30,14 @@ use futures::{
     select_biased,
     stream::FuturesUnordered,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use log::{info, trace};
+use nohash::{IntMap, IntSet};
 use parking_lot::Mutex;
 use poolshark::global::GPooled;
 use protocol::resolver::UserInfo;
 use smallvec::SmallVec;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
-    mem,
-    net::SocketAddr,
-    pin::Pin,
-    sync::Arc,
+    collections::hash_map::Entry, mem, net::SocketAddr, pin::Pin, sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -59,7 +56,7 @@ struct Sub {
     val: ValWeak,
 }
 
-type ByChan = FxHashMap<
+type ByChan = IntMap<
     ChanId,
     (ChanWrap<GPooled<Vec<(SubId, Event)>>>, GPooled<Vec<(SubId, Event)>>),
 >;
@@ -252,14 +249,14 @@ pub(super) struct ConnectionCtx {
     tls_ctx: Option<tls::CachedConnector>,
     uifo: Option<UserInfo>,
     from_sub: BatchReceiver<ToCon>,
-    pending: HashMap<Path, SubscribeValRequest>,
-    subscriptions: FxHashMap<Id, Sub>,
+    pending: AHashMap<Path, SubscribeValRequest>,
+    subscriptions: IntMap<Id, Sub>,
     msg_recvd: bool,
     pending_flushes: Vec<oneshot::Sender<()>>,
-    pending_writes: FxHashMap<Id, FxHashMap<WriteId, oneshot::Sender<Value>>>,
-    by_receiver: FxHashMap<ChanWrap<GPooled<Vec<(SubId, Event)>>>, ChanId>,
+    pending_writes: IntMap<Id, IntMap<WriteId, oneshot::Sender<Value>>>,
+    by_receiver: AHashMap<ChanWrap<GPooled<Vec<(SubId, Event)>>>, ChanId>,
     by_chan: ByChan,
-    gc_chan: FxHashSet<ChanId>,
+    gc_chan: IntSet<ChanId>,
     blocked_channels: FuturesUnordered<BlockedChannelFut>,
     timed_out: Vec<Path>,
 }
@@ -284,14 +281,14 @@ impl ConnectionCtx {
             tls_ctx,
             uifo,
             from_sub,
-            pending: HashMap::default(),
-            subscriptions: HashMap::default(),
+            pending: AHashMap::default(),
+            subscriptions: IntMap::default(),
             msg_recvd: false,
             pending_flushes: Vec::new(),
-            pending_writes: HashMap::default(),
-            by_receiver: HashMap::default(),
-            by_chan: HashMap::default(),
-            gc_chan: HashSet::default(),
+            pending_writes: IntMap::default(),
+            by_receiver: AHashMap::default(),
+            by_chan: IntMap::default(),
+            gc_chan: IntSet::default(),
             blocked_channels: FuturesUnordered::<BlockedChannelFut>::new(),
             timed_out: Vec::new(),
         }
@@ -393,7 +390,7 @@ impl ConnectionCtx {
                     if let Some(tx) = tx {
                         self.pending_writes
                             .entry(id)
-                            .or_insert_with(HashMap::default)
+                            .or_insert_with(IntMap::default)
                             .insert(wid, tx);
                     }
                 }

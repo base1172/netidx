@@ -1,4 +1,5 @@
 use crate::protocol::{Request, Response, Update};
+use ahash::AHashMap;
 use anyhow::{bail, Result};
 use futures::{
     channel::mpsc,
@@ -7,7 +8,6 @@ use futures::{
     stream::{FuturesUnordered, SplitSink},
     StreamExt,
 };
-use fxhash::FxHashMap;
 use log::warn;
 use netidx::{
     path::Path,
@@ -17,14 +17,11 @@ use netidx::{
     utils::{BatchItem, Batched},
 };
 use netidx_protocols::rpc::client::Proc;
+use nohash::IntMap;
 use poolshark::global::{GPooled, Pool};
 use std::time::Duration;
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    net::SocketAddr,
-    pin::Pin,
-    result,
-    sync::LazyLock,
+    collections::hash_map::Entry, net::SocketAddr, pin::Pin, result, sync::LazyLock,
 };
 use warp::{
     filters::BoxedFilter,
@@ -77,11 +74,11 @@ async fn err(
 struct ClientCtx {
     publisher: Publisher,
     subscriber: Subscriber,
-    subs: FxHashMap<SubId, SubEntry>,
-    pubs: FxHashMap<PubId, PubEntry>,
-    subs_by_path: HashMap<Path, SubId>,
-    pubs_by_path: HashMap<Path, PubId>,
-    rpcs: HashMap<Path, Proc>,
+    subs: IntMap<SubId, SubEntry>,
+    pubs: IntMap<PubId, PubEntry>,
+    subs_by_path: AHashMap<Path, SubId>,
+    pubs_by_path: AHashMap<Path, PubId>,
+    rpcs: AHashMap<Path, Proc>,
     tx_up: mpsc::Sender<GPooled<Vec<(SubId, Event)>>>,
 }
 
@@ -95,11 +92,11 @@ impl ClientCtx {
             publisher,
             subscriber,
             tx_up,
-            subs: HashMap::default(),
-            pubs: HashMap::default(),
-            subs_by_path: HashMap::default(),
-            pubs_by_path: HashMap::default(),
-            rpcs: HashMap::default(),
+            subs: IntMap::default(),
+            pubs: IntMap::default(),
+            subs_by_path: AHashMap::default(),
+            pubs_by_path: AHashMap::default(),
+            rpcs: AHashMap::default(),
         }
     }
 
