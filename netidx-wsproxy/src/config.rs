@@ -12,4 +12,10 @@ pub struct Config {
     #[serde(default)]
     #[structopt(long = "key", help = "path to the private key")]
     pub key: Option<String>,
+    #[serde(default)]
+    #[structopt(
+        long = "per-client-buffer",
+        help = "buffer updates per client so a slow client can't stall others (set a timeout)"
+    )]
+    pub per_client_buffer: bool,
 }
