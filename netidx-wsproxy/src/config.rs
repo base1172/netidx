@@ -15,7 +15,7 @@ pub struct Config {
     #[serde(default)]
     #[structopt(
         long = "per-client-buffer",
-        help = "buffer updates per client so a slow client can't stall others (set a timeout)"
+        help = "buffer updates per client so a slow client can't stall others"
     )]
     pub per_client_buffer: bool,
 }
